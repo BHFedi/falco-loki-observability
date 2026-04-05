@@ -1,0 +1,29 @@
+# --- Databases and Persistence ---
+# We don't want to push the actual logs/metrics to GitHub
+storage/loki-data/
+alloy/data/
+prometheus/data/
+
+# --- Sensitive Configurations ---
+# If these files contain API keys or passwords, keep them local
+# (Uncomment if you use .env files)
+# .env
+# **/certs/*.pem
+# **/certs/*.key
+
+# --- Python / Analysis ---
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+ENV/
+analysis/.env
+
+# --- OS / IDE / Temp ---
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.bak
+{analysis}/
