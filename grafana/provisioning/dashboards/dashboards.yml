@@ -1,0 +1,30 @@
+apiVersion: 1
+
+providers:
+  # ------------------------
+  # Loki dashboards (Security Events / Logs)
+  # ------------------------
+  - name: 'SIEM Dashboards Loki'
+    orgId: 1
+    folder: 'SIEM / Loki'
+    folderUid: 'loki'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/loki
+
+  # ------------------------
+  # Prometheus dashboards (Falco metrics, SIEM monitoring)
+  # ------------------------
+  - name: 'SIEM Dashboards Prometheus'
+    orgId: 1
+    folder: 'SIEM / Prometheus'
+    folderUid: 'prometheus'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/prometheus

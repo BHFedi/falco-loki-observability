@@ -1,0 +1,35 @@
+# ==============================================
+# Grafana Datasources 
+# ==============================================
+
+apiVersion: 1
+
+datasources:
+  # Loki - Security Events/Logs
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: true
+    editable: false
+    jsonData:
+      maxLines: 1000
+      timeout: 60
+
+  # Prometheus - Metrics
+  - name: Prometheus
+    type: prometheus
+    uid: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: false
+    editable: false
+    jsonData:
+      httpMethod: POST                 # Use POST for heavy/long queries
+      manageAlerts: true               # Enable Grafana alert management
+      prometheusType: Prometheus
+      prometheusVersion: "3.10.0"
+      cacheLevel: 'High'               # Cache query results to reduce load
+      disableRecordingRules: false
+      incrementalQueryOverlapWindow: 10m

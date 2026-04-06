@@ -1,0 +1,9 @@
+apiVersion: 1
+
+folders:
+  - name: "SIEM / Loki"
+    uid: loki
+  - name: "SIEM / Prometheus"
+    uid: prometheus
+  - name: "SIEM / Alerts"
+    uid: alerts

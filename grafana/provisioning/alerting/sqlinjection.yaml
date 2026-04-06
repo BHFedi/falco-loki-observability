@@ -1,0 +1,34 @@
+apiVersion: 1
+groups:
+  - name: sql-injection-alerts
+    folder: "SIEM / Alerts"
+    interval: 1m
+    rules:
+      - alert: SQLInjectionDetected
+        uid: sqlinjection-001
+        title: "SQL Injection Error Detection"
+        for: 5m
+        labels:
+          severity: high
+        annotations:
+          summary: "Detects SQL error messages that indicate probing for an injection attack"
+          description: |
+            This alert triggers when suspicious SQL error messages appear more than 5 times
+            in 5 minutes, which may indicate an attempted SQL injection.
+            **False positives:** A syntax error in MySQL may also occur in safe queries
+            if there is an empty `IN()` clause.
+        data:
+          - refId: A
+            datasourceUid: "loki"          
+            model:
+              expr: |
+                count_over_time(
+                  {job=~".+"} |~ `(?i)quoted\ string\ not\ properly\ terminated|You\ have\ an\ error\ in your SQL\ syntax|Unclosed\ quotation\ mark|near\ ".*":\ syntax\ error|SELECTs\ to\ the left\ and\ right\ of\ UNION\ do not have the same number of result columns`
+                  [5m]
+                )
+              refId: A
+              type: logs                   
+            relativeTimeRange:
+              from: 300
+              to: 0
+        condition: A

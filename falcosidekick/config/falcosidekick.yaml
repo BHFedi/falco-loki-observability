@@ -1,0 +1,64 @@
+listenaddress: "0.0.0.0"
+listenport: 2801
+
+debug: false
+
+# =========================
+# PROMETHEUS METRICS
+# =========================
+prometheus:
+  enabled: true
+  path: "/metrics"
+
+# =========================
+# LOKI OUTPUT (CORE SIEM STORAGE)
+# =========================
+loki:
+  enabled: true
+  # Use the internal Docker service name if running in the same network
+  hostport: "http://loki:3100"
+  tenant: ""
+  format: "json"
+  minimumpriority: "error"
+  extralabels: "hostname,container,container_name,proc.name"
+
+# =========================
+# Discord ALERTING
+# =========================
+discord:
+  enabled: false
+  webhookurl: "https://<Discord webhook>"
+  minimumpriority: "critical"
+
+# =========================
+# MICROSOFT TEAMS ALERTING
+# =========================
+teams:
+  enabled: false
+  # webhookurl: "https://outlook.office.com/webhook/..."
+
+# =========================
+# WEBHOOK (FOR SHUFFLE OR CUSTOM)
+# =========================
+webhook:
+  enabled: false
+  address: "http://<SOAR webhook>"
+  minimumpriority: "critical"
+# =========================
+# FILTERING (IMPORTANT)
+# =========================
+
+# Optional: reduce noise
+mute:
+  - "Falco Terminal shell in container"
+
+# =========================
+# TLS / mTLS PLACEHOLDER (for production)
+# =========================
+# tlsserver:
+#   deploy: true
+#   certfile: /certs/server/server.crt
+#   keyfile: /certs/server/server.key
+#   mutualtls: true
+#   cacertfile: /certs/ca/ca.crt
+

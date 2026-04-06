@@ -1,0 +1,19 @@
+global:
+  scrape_interval: 15s
+
+scrape_configs:
+
+  # =========================
+  # FALCOSIDEKICK METRICS
+  # =========================
+  - job_name: 'falcosidekick'
+    static_configs:
+      - targets: ['falcosidekick:2801']
+
+  # =========================
+  # FALCO AGENTS
+  # =========================
+  - job_name: 'falco'
+    static_configs:
+      - targets:
+          - 'falco-agent:8765'

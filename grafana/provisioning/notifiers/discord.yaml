@@ -1,0 +1,13 @@
+notifiers:
+  - name: Discord
+    type: webhook
+    uid: discord-1
+    isDefault: false
+    settings:
+      url: "https://<Discord webhook URL>"
+      httpMethod: POST
+      body: |
+        {
+          "username": "Grafana Alert",
+          "content": "{{ .CommonAnnotations.summary }}\n{{ .CommonAnnotations.description }}\nLevel: {{ .CommonLabels.severity }}"
+        }
