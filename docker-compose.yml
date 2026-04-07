@@ -29,7 +29,7 @@ services:
       # Gemini Configuration
       - LLM_PROVIDER=gemini
       - GEMINI_API_KEY=${GEMINI_API_KEY}  # Reference only, actual value in .env
-      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash-latest}
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
       # Storage
       - STACK=loki
       - LOKI_URL=http://loki:3100

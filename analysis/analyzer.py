@@ -193,40 +193,33 @@ class AnthropicProvider(LLMProvider):
                 return json.loads(match.group())
             raise
 
-class GeminiProvider(LLMProvider):
-    """Google Gemini API provider - requires API key.
-    
-    Uses OpenAI-compatible endpoint for consistent JSON response handling.
-    """
-    
-    def __init__(self, api_key: str, model: str = "gemini-1.5-flash-latest"):
-        self.api_key = api_key
-        self.model = model
-        # OpenAI-compatible endpoint (easier integration)
-        self.base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
-    
-    def analyze(self, system_prompt: str, user_prompt: str) -> dict:
-        response = requests.post(
-            f"{self.base_url}/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "response_format": {"type": "json_object"}
-            },
-            timeout=60
-        )
-        response.raise_for_status()
-        
-        content = response.json()['choices'][0]['message']['content']
-        return json.loads(content)
+from google import genai
+from google.genai import types
 
+class GeminiProvider(LLMProvider):
+    """Google Gemini API provider using the modern GenAI SDK."""
+
+    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
+        # We'll use one of the new models from your list
+        self.model_name = model
+        self.client = genai.Client(api_key=api_key)
+
+    def analyze(self, system_prompt: str, user_prompt: str) -> dict:
+        try:
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=f"{system_prompt}\n\n{user_prompt}",
+                config=types.GenerateContentConfig(
+                    # This tells the model to output valid JSON
+                    response_mime_type="application/json",
+                    # Gemini 3 models support "thinking" levels
+                    #thinking_level="low" 
+                )
+            )
+            # The new SDK returns the text directly in response.text
+            return json.loads(response.text)
+        except Exception as e:
+            return {"error": str(e), "success": False}
 
 class AlertAnalyzer:
     """Main analyzer class for Falco alerts using Ollama."""

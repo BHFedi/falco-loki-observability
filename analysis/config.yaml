@@ -4,7 +4,7 @@ analysis:
   provider: ${LLM_PROVIDER:-gemini}
   gemini:
     api_key: ${GEMINI_API_KEY}
-    model: ${GEMINI_MODEL:-gemini-1.5-flash-latest}
+    model: ${GEMINI_MODEL:-gemini-3-flash-preview}
 
 storage:
   backend: ${STACK}
