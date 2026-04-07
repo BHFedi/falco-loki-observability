@@ -7,9 +7,9 @@ prometheus/data/
 # --- Sensitive Configurations ---
 # If these files contain API keys or passwords, keep them local
 # (Uncomment if you use .env files)
-# .env
-# **/certs/*.pem
-# **/certs/*.key
+.env
+**/certs/*.pem
+**/certs/*.key
 
 # --- Python / Analysis ---
 __pycache__/
