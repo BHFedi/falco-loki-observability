@@ -14,6 +14,8 @@ import requests
 from datetime import datetime, timedelta
 from typing import Optional, List, Dict, Any
 from pathlib import Path
+from google import genai
+from google.genai import types
 
 import yaml
 
@@ -24,7 +26,7 @@ from prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, MITRE_MAPPING
 class LokiClient:
     """Client for querying Falco alerts from Loki."""
     
-    def __init__(self, url: str = "http://localhost:3100"):
+    def __init__(self, url: str = "http://loki:3100"):
         self.url = url.rstrip('/')
     
     def query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> List[dict]:
@@ -103,7 +105,7 @@ class LLMProvider:
 class OllamaProvider(LLMProvider):
     """Local Ollama LLM provider - recommended for privacy."""
     
-    def __init__(self, url: str = "http://localhost:11434", model: str = "llama3.1:8b"):
+    def __init__(self, url: str = "http://ollama:11434", model: str = "llama3.1:8b"):
         self.url = url.rstrip('/')
         self.model = model
     
@@ -193,9 +195,6 @@ class AnthropicProvider(LLMProvider):
                 return json.loads(match.group())
             raise
 
-from google import genai
-from google.genai import types
-
 class GeminiProvider(LLMProvider):
     """Google Gemini API provider using the modern GenAI SDK."""
 
@@ -226,7 +225,11 @@ class AlertAnalyzer:
     
     def __init__(self, config: dict):
         self.config = config
-        self.loki_url = config.get('loki', {}).get('url', 'http://localhost:3100')
+        self.loki_url = (
+            os.getenv("LOKI_URL")
+            or config.get('loki', {}).get('url')
+            or "http://loki:3100"
+        )
         self.log_client = LokiClient(self.loki_url)
         self.obfuscation_level = config.get('analysis', {}).get('obfuscation_level', 'standard')
         self.provider = self._create_provider()
@@ -239,7 +242,7 @@ class AlertAnalyzer:
         if provider_name == 'ollama':
             ollama_config = analysis_config.get('ollama', {})
             return OllamaProvider(
-                url=ollama_config.get('url', 'http://localhost:11434'),
+                url=ollama_config.get('url', 'http://ollama:11434'),
                 model=ollama_config.get('model', 'llama3.1:8b')
             )
         elif provider_name == 'openai':
@@ -450,41 +453,41 @@ def load_config(config_path: Optional[str] = None) -> dict:
     """Load configuration from file with environment variable expansion."""
     config = None
     
+    # 1. Explicit path (highest priority)
+    config_path = config_path or os.getenv("CONFIG_PATH")
+
     if config_path and os.path.exists(config_path):
         with open(config_path) as f:
             config = yaml.safe_load(f)
-    else:
-        default_paths = [
-            'config.yaml',
-            os.path.expanduser('~/.config/sib/analysis.yaml'),
-            '/etc/sib/analysis.yaml'
-        ]
-        
-        for path in default_paths:
-            if os.path.exists(path):
-                with open(path) as f:
-                    config = yaml.safe_load(f)
-                    break
-    
+
+    # 2. Container default path (your mounted file)
+    elif os.path.exists("/app/config.yaml"):
+        with open("/app/config.yaml") as f:
+            config = yaml.safe_load(f)
+
+    # 3. Local/dev fallback (optional)
+    elif os.path.exists("config.yaml"):
+        with open("config.yaml") as f:
+            config = yaml.safe_load(f)
+
     if config:
         return expand_env_vars(config)
-    
-    # Default config for Falco + Loki + Ollama stack
+
+    # 4. Hard fallback
     return {
         'analysis': {
             'enabled': True,
             'obfuscation_level': 'standard',
             'provider': 'ollama',
             'ollama': {
-                'url': 'http://localhost:11434',
+                'url': os.getenv("OLLAMA_URL", "http://ollama:11434"),
                 'model': 'llama3.1:8b'
             }
         },
         'loki': {
-            'url': 'http://localhost:3100'
+            'url': os.getenv("LOKI_URL", "http://loki:3100")
         }
     }
-
 
 def print_analysis(result: dict, verbose: bool = False):
     """Pretty print analysis results."""

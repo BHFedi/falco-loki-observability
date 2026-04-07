@@ -10,4 +10,4 @@ storage:
   backend: ${STACK}
 
 loki:
-  url: ${LOKI_URL}
+  url: http://loki:3100
