@@ -193,6 +193,40 @@ class AnthropicProvider(LLMProvider):
                 return json.loads(match.group())
             raise
 
+class GeminiProvider(LLMProvider):
+    """Google Gemini API provider - requires API key.
+    
+    Uses OpenAI-compatible endpoint for consistent JSON response handling.
+    """
+    
+    def __init__(self, api_key: str, model: str = "gemini-1.5-flash-latest"):
+        self.api_key = api_key
+        self.model = model
+        # OpenAI-compatible endpoint (easier integration)
+        self.base_url = "https://generativelanguage.googleapis.com/v1beta/openai"
+    
+    def analyze(self, system_prompt: str, user_prompt: str) -> dict:
+        response = requests.post(
+            f"{self.base_url}/chat/completions",
+            headers={
+                "Authorization": f"Bearer {self.api_key}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": self.model,
+                "messages": [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt}
+                ],
+                "response_format": {"type": "json_object"}
+            },
+            timeout=60
+        )
+        response.raise_for_status()
+        
+        content = response.json()['choices'][0]['message']['content']
+        return json.loads(content)
+
 
 class AlertAnalyzer:
     """Main analyzer class for Falco alerts using Ollama."""
@@ -228,6 +262,13 @@ class AlertAnalyzer:
             return AnthropicProvider(
                 api_key=api_key,
                 model=anthropic_config.get('model', 'claude-sonnet-4-20250514')
+            )
+        elif provider_name == 'gemini':
+            gemini_config = analysis_config.get('gemini', {})
+            api_key = os.path.expandvars(gemini_config.get('api_key', ''))
+            return GeminiProvider(
+                api_key=api_key,
+                model=gemini_config.get('model', 'gemini-1.5-flash-latest')
             )
         else:
             raise ValueError(f"Unknown provider: {provider_name}")

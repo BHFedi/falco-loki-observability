@@ -10,10 +10,10 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY *.py ./
 
 # Create non-root user and cache directory
-RUN useradd -m -r sib && \
+RUN useradd -m -r analyser && \
     mkdir -p /app/cache && \
-    chown -R sib:sib /app
-USER sib
+    chown -R analyser:analyser /app
+USER analyser
 
 EXPOSE 5000
 

@@ -1,8 +1,13 @@
 analysis:
   enabled: true
-  obfuscation_level: minimal
-  provider: ollama
-  ollama:
-    # These are FALLBACKS only - compose env vars override these
-    url: http://ollama:11434  
-    model: llama3.1:8b
+  obfuscation_level: standard
+  provider: ${LLM_PROVIDER:-gemini}
+  gemini:
+    api_key: ${GEMINI_API_KEY}
+    model: ${GEMINI_MODEL:-gemini-1.5-flash-latest}
+
+storage:
+  backend: ${STACK}
+
+loki:
+  url: ${LOKI_URL}

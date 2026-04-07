@@ -1,38 +1,19 @@
 services:
-  nginx:
-    image: nginxinc/nginx-unprivileged:mainline
-    container_name: prod-nginx
-    restart: unless-stopped
-    cap_add:
-      - NET_BIND_SERVICE
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"
-    volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
-      - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./nginx/certs:/etc/nginx/certs:ro
-      - ./nginx/logs:/var/log/nginx
-      - /tmp/nginx-run:/run
-    networks:
-      - mon-healio
-
-  ollama:
-    image: ollama/ollama:latest
-    container_name: ollama
-    restart: unless-stopped
-    volumes:
-      - ollama-models:/root/.ollama
-    networks:
-      - mon-healio
-    entrypoint: >
-      sh -c "
-        ollama serve &
-        sleep 5 &&
-        ollama pull llama3.1:8b &&
-        wait
-      "
+  #  ollama:
+  #  image: ollama/ollama:latest
+  #  container_name: ollama
+  #  restart: unless-stopped
+  #  volumes:
+  #    - ollama-models:/root/.ollama
+  #  networks:
+  #    - mon-healio
+  #  entrypoint: >
+  #    sh -c "
+  #      ollama serve &
+  #      sleep 5 &&
+  #      ollama pull llama3.1:8b &&
+  #      wait
+  #    "
 
   analyser:
     build:
@@ -45,13 +26,16 @@ services:
       - ./analysis/config.yaml:/app/config.yaml:ro
       - analysis-cache:/app/cache
     environment:
-      - PYTHONUNBUFFERED=1
-      - OLLAMA_URL=http://ollama:11434
-      - OLLAMA_MODEL=llama3.1:8b
-      - OBFUSCATION_LEVEL=minimal
+      # Gemini Configuration
+      - LLM_PROVIDER=gemini
+      - GEMINI_API_KEY=${GEMINI_API_KEY}  # Reference only, actual value in .env
+      - GEMINI_MODEL=${GEMINI_MODEL:-gemini-1.5-flash-latest}
+      # Storage
       - STACK=loki
+      - LOKI_URL=http://loki:3100
+      - OBFUSCATION_LEVEL=standard
     depends_on:
-      - ollama
+      - loki
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/health')"]
       interval: 30s
