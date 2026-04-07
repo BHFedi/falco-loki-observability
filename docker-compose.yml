@@ -26,14 +26,16 @@ services:
       - ./analysis/config.yaml:/app/config.yaml:ro
       - analysis-cache:/app/cache
     environment:
-      # Gemini Configuration
       - LLM_PROVIDER=gemini
-      - GEMINI_API_KEY=${GEMINI_API_KEY}  # Reference only, actual value in .env
+      # If using Docker Secrets, use the _FILE suffix:
+      #- GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key 
+      # Or fallback to direct env (your current setup):
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
-      # Storage
-      - STACK=loki
       - LOKI_URL=http://loki:3100
-      - OBFUSCATION_LEVEL=standard
+      - STACK=loki
+    # secrets:
+    #   - gemini_api_key
     depends_on:
       - loki
     healthcheck:
