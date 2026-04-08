@@ -1,16 +1,33 @@
+
 analysis:
   enabled: true
   obfuscation_level: standard
+  # LLM_PROVIDER env var takes precedence over this value at runtime (see analyzer.py _create_provider)
   provider: ${LLM_PROVIDER:-gemini}
+ 
   gemini:
+    # expand_env_vars() + read_secret() in analyzer.py will resolve this.
+    # If GEMINI_API_KEY_FILE is set (Docker secret), that wins.
+    # If GEMINI_API_KEY env var is set directly, that is used next.
+    # This value is the last fallback.
     api_key: ${GEMINI_API_KEY}
     model: ${GEMINI_MODEL:-gemini-3-flash-preview}
-  ollama:
-    url: ${OLLAMA_URL:-http://ollama:11434}
-    model: ${OLLAMA_MODEL:-llama3.1:8b}
-
+ 
+  # Uncomment and configure other providers as needed:
+  # ollama:
+  #   url: ${OLLAMA_URL:-http://ollama:11434}
+  #   model: ${OLLAMA_MODEL:-llama3.1:8b}
+  #
+  # openai:
+  #   api_key: ${OPENAI_API_KEY}
+  #   model: gpt-4o-mini
+  #
+  # anthropic:
+  #   api_key: ${ANTHROPIC_API_KEY}
+  #   model: claude-sonnet-4-20250514
+ 
 storage:
   backend: ${STACK:-loki}
-
+ 
 loki:
   url: ${LOKI_URL:-http://loki:3100}

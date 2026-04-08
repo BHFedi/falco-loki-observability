@@ -21,7 +21,7 @@
       },
       "id": 1,
       "options": {
-        "content": "### LogQL Query Examples\n| Query | Description |\n|-------|-------------|\n| `{source=\"syscall\"}` | All events |\n| `{source=\"syscall\", priority=\"Warning\"}` | Warning events |\n| `{source=\"syscall\", rule=~\".*shell.*\"}` | Shell-related rules |",
+        "content": "### LogQL Query Examples\n| Query | Description |\n|-------|-------------|\n| `{source=\"syscall\"} \\| json` | All events with JSON parsing |\n| `{source=\"syscall\"} \\| json \\| priority=\"Warning\"` | Warning events (field filter) |\n| `{source=\"syscall\"} \\| json \\| rule=~\".*shell.*\"` | Shell-related rules |\n\n> **Note**: `rule` is filtered via log content (`| json`), not as a high-cardinality label.",
         "mode": "markdown"
       },
       "title": "Query Help",
@@ -56,64 +56,20 @@
         },
         "overrides": [
           {
-            "matcher": {
-              "id": "byName",
-              "options": "Critical"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
+            "matcher": { "id": "byName", "options": "Critical" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "Error"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
+            "matcher": { "id": "byName", "options": "Error" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "Warning"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
+            "matcher": { "id": "byName", "options": "Warning" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "Notice"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
+            "matcher": { "id": "byName", "options": "Notice" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }]
           }
         ]
       },
@@ -126,9 +82,7 @@
       "id": 2,
       "options": {
         "legend": {
-          "calcs": [
-            "sum"
-          ],
+          "calcs": ["sum"],
           "displayMode": "list",
           "placement": "bottom",
           "showLegend": true
@@ -140,17 +94,106 @@
       },
       "targets": [
         {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by (priority) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} | json | priority=~\"$priority\" [$__interval]))",
+          "legendFormat": "{{priority}}",
+          "refId": "A"
+        }
+      ],
+      "title": "Event Volume by Priority",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": {
+            "axisBorderShow": false,
+            "barAlignment": 0,
+            "drawStyle": "bars",
+            "fillOpacity": 60,
+            "lineWidth": 1,
+            "stacking": { "group": "A", "mode": "normal" }
           },
-          "expr": "sum by (rule) (count_over_time({source=\"syscall\", hostname=~\"$hostname\", priority=~\"$priority\", rule=~\"$rule\"} [$__interval]))",
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 15
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "calcs": ["sum"],
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "sum by (rule) (count_over_time({source=~\"syscall|k8s_audit\"} | json | priority=~\"$priority\" [5m]))",
           "legendFormat": "{{rule}}",
           "refId": "A"
         }
       ],
-      "title": "Event Volume",
+      "title": "🔥 Attack Pattern View (rule × 5 m)",
+      "description": "Detects bursts and coordinated attack patterns by rule. Spike = possible coordinated attack.",
       "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "loki"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 50 },
+              { "color": "red", "value": 200 }
+            ]
+          },
+          "unit": "short"
+        }
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 15
+      },
+      "id": 6,
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "horizontal",
+        "displayMode": "gradient",
+        "showUnfilled": true
+      },
+      "targets": [
+        {
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "topk(10, sum by (hostname) (count_over_time({source=~\"syscall|k8s_audit\"} | json [5m])))",
+          "legendFormat": "{{hostname}}",
+          "refId": "A",
+          "instant": true
+        }
+      ],
+      "title": "🔊 Top Talkers (hostname, 5 m)",
+      "description": "Top 10 hosts generating the most Falco events. Outliers may indicate compromise or misconfiguration.",
+      "type": "bargauge"
     },
     {
       "datasource": {
@@ -161,7 +204,7 @@
         "h": 16,
         "w": 24,
         "x": 0,
-        "y": 15
+        "y": 23
       },
       "id": 3,
       "options": {
@@ -180,24 +223,21 @@
           "links": [
             {
               "title": "🤖 Analyze with AI",
-              "url": "http://analyser:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
+              "url": "http://analyser:5000/analyze?rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
               "targetBlank": true
             }
           ]
         },
         "overrides": [
           {
-            "matcher": {
-              "id": "byName",
-              "options": "Line"
-            },
+            "matcher": { "id": "byName", "options": "Line" },
             "properties": [
               {
                 "id": "links",
                 "value": [
                   {
                     "title": "🤖 Analyze with AI",
-                    "url": "http://analyser:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
+                    "url": "http://analyser:5000/analyze?rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
                     "targetBlank": true
                   }
                 ]
@@ -208,11 +248,8 @@
       },
       "targets": [
         {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{source=\"syscall\", hostname=~\"$hostname\", priority=~\"$priority\", rule=~\"$rule\"}",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} | json | priority=~\"$priority\"",
           "refId": "A"
         }
       ],
@@ -228,7 +265,7 @@
         "h": 12,
         "w": 24,
         "x": 0,
-        "y": 31
+        "y": 39
       },
       "id": 4,
       "title": "🤖 Select Event to Analyze",
@@ -237,136 +274,49 @@
         "defaults": {
           "custom": {
             "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            },
+            "cellOptions": { "type": "auto" },
             "inspect": false
           }
         },
         "overrides": [
           {
-            "matcher": {
-              "id": "byName",
-              "options": "Time"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 160
-              }
-            ]
+            "matcher": { "id": "byName", "options": "Time" },
+            "properties": [{ "id": "custom.width", "value": 160 }]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "priority"
-            },
+            "matcher": { "id": "byName", "options": "priority" },
             "properties": [
-              {
-                "id": "custom.width",
-                "value": 80
-              },
+              { "id": "custom.width", "value": 80 },
               {
                 "id": "mappings",
                 "value": [
-                  {
-                    "options": {
-                      "Critical": {
-                        "color": "dark-red",
-                        "index": 0
-                      }
-                    },
-                    "type": "value"
-                  },
-                  {
-                    "options": {
-                      "Error": {
-                        "color": "red",
-                        "index": 1
-                      }
-                    },
-                    "type": "value"
-                  },
-                  {
-                    "options": {
-                      "Warning": {
-                        "color": "orange",
-                        "index": 2
-                      }
-                    },
-                    "type": "value"
-                  },
-                  {
-                    "options": {
-                      "Notice": {
-                        "color": "yellow",
-                        "index": 3
-                      }
-                    },
-                    "type": "value"
-                  }
+                  { "options": { "Critical": { "color": "dark-red", "index": 0 } }, "type": "value" },
+                  { "options": { "Error": { "color": "red", "index": 1 } }, "type": "value" },
+                  { "options": { "Warning": { "color": "orange", "index": 2 } }, "type": "value" },
+                  { "options": { "Notice": { "color": "yellow", "index": 3 } }, "type": "value" }
                 ]
               },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              }
+              { "id": "custom.cellOptions", "value": { "type": "color-text" } }
             ]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "detected_level"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 100
-              }
-            ]
+            "matcher": { "id": "byName", "options": "rule" },
+            "properties": [{ "id": "custom.width", "value": 200 }]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "rule"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 200
-              }
-            ]
+            "matcher": { "id": "byName", "options": "hostname" },
+            "properties": [{ "id": "custom.width", "value": 120 }]
           },
           {
-            "matcher": {
-              "id": "byName",
-              "options": "hostname"
-            },
+            "matcher": { "id": "byName", "options": "Line" },
             "properties": [
-              {
-                "id": "custom.width",
-                "value": 120
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Line"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 500
-              },
+              { "id": "custom.width", "value": 500 },
               {
                 "id": "links",
                 "value": [
                   {
                     "title": "🤖 Analyze with AI",
-                    "url": "http://analyser:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
+                    "url": "http://analyser:5000/analyze?rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
                     "targetBlank": true
                   }
                 ]
@@ -378,16 +328,12 @@
       "options": {
         "showHeader": true,
         "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
+        "footer": { "show": false }
       },
       "transformations": [
         {
           "id": "extractFields",
-          "options": {
-            "source": "labels"
-          }
+          "options": { "source": "labels" }
         },
         {
           "id": "organize",
@@ -413,11 +359,8 @@
       ],
       "targets": [
         {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{source=\"syscall\", hostname=~\"$hostname\", priority=~\"$priority\", rule=~\"$rule\"}",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} | json | priority=~\"$priority\"",
           "refId": "A",
           "maxLines": 500
         }
@@ -426,13 +369,7 @@
   ],
   "refresh": "5s",
   "schemaVersion": 39,
-  "tags": [
-    "sib",
-    "security",
-    "falco",
-    "events",
-    "ai"
-  ],
+  "tags": ["sib", "security", "falco", "events", "ai"],
   "templating": {
     "list": [
       {
@@ -442,16 +379,13 @@
           "text": "All",
           "value": "$__all"
         },
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
-        "definition": "label_values({source=\"syscall\"}, hostname)",
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values({source=~\"syscall|k8s_audit\"}, hostname)",
         "includeAll": true,
         "multi": false,
         "name": "hostname",
         "options": [],
-        "query": "label_values({source=\"syscall\"}, hostname)",
+        "query": "label_values({source=~\"syscall|k8s_audit\"}, hostname)",
         "refresh": 2,
         "sort": 1,
         "type": "query"
@@ -460,47 +394,16 @@
         "allValue": ".*",
         "current": {
           "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
+          "text": ["All"],
+          "value": ["$__all"]
         },
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
-        "definition": "label_values({source=\"syscall\"}, priority)",
+        "datasource": { "type": "loki", "uid": "loki" },
+        "definition": "label_values({source=~\"syscall|k8s_audit\"}, priority)",
         "includeAll": true,
         "multi": true,
         "name": "priority",
         "options": [],
-        "query": "label_values({source=\"syscall\"}, priority)",
-        "refresh": 2,
-        "type": "query"
-      },
-      {
-        "allValue": ".*",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
-        "definition": "label_values({source=\"syscall\"}, rule)",
-        "includeAll": true,
-        "multi": true,
-        "name": "rule",
-        "options": [],
-        "query": "label_values({source=\"syscall\"}, rule)",
+        "query": "label_values({source=~\"syscall|k8s_audit\"}, priority)",
         "refresh": 2,
         "type": "query"
       }
@@ -514,5 +417,5 @@
   "timezone": "browser",
   "title": "Events Explorer (AI-Enabled)",
   "uid": "sib-events-explorer-ai",
-  "version": 1
+  "version": 2
 }

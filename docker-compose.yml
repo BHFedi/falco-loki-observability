@@ -26,16 +26,18 @@ services:
       - ./analysis/config.yaml:/app/config.yaml:ro
       - analysis-cache:/app/cache
     environment:
+      # Provider selection — overrides config.yaml at runtime
       - LLM_PROVIDER=gemini
-      # If using Docker Secrets, use the _FILE suffix:
-      #- GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key 
-      # Or fallback to direct env (your current setup):
-      - GEMINI_API_KEY=${GEMINI_API_KEY}
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
-      - LOKI_URL=http://loki:3100
+      # FIX #5: Use _FILE pattern so read_secret() picks up the Docker secret.
+      # Do NOT set GEMINI_API_KEY directly here; the secret file is the source of truth.
+      - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
+      # Storage
       - STACK=loki
-    # secrets:
-    #   - gemini_api_key
+      - LOKI_URL=http://loki:3100
+      - OBFUSCATION_LEVEL=standard
+    secrets:
+      - gemini_api_key
     depends_on:
       - loki
     healthcheck:
@@ -75,12 +77,15 @@ services:
       - "3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER}
-      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD}
+      # FIX #5: Use _FILE pattern for Grafana admin password too.
+      - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_admin_password
       - GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_LOG_MODE=file
       - GF_PATHS_LOGS=/var/log/grafana
       - GF_LOG_LEVEL=debug
+    secrets:
+      - grafana_admin_password
     volumes:
       - grafana-data:/var/lib/grafana
       - grafana-logs:/var/log/grafana
@@ -130,6 +135,23 @@ services:
       - ./storage/config/prometheus.yml:/etc/prometheus/prometheus.yml:ro
     networks:
       - mon-healio
+
+# ---------------------------------------------------------------------------
+# FIX #5: Declare Docker secrets (values sourced from files on the host).
+# Create them first:
+#   echo "your-gemini-key" | docker secret create gemini_api_key -
+#   echo "your-grafana-pass" | docker secret create grafana_admin_password -
+# Or for Compose file-based secrets, place the key in a local file and
+# reference it with `file:` below.
+# ---------------------------------------------------------------------------
+secrets:
+  gemini_api_key:
+    # Option A — Docker Swarm managed secret (recommended for production):
+    # external: true
+    # Option B — local file (ok for dev/compose-only stacks):
+    file: ./secrets/gemini_api_key.txt
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password.txt
 
 volumes:
   alloy-data:

@@ -27,3 +27,6 @@ analysis/.env
 *.swp
 *.bak
 {analysis}/
+
+# --- Secrets ---
+secrets/*.txt

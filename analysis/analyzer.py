@@ -2,7 +2,7 @@
 Alert Analyzer - LLM-powered security alert analysis
 
 Fetches alerts from Loki (ingested via Falcosidekick), obfuscates sensitive data, 
-and uses various LLM providers to provide attack vector analysis.
+and uses local Ollama LLM to provide attack vector analysis and mitigation strategies.
 """
 
 import json
@@ -22,8 +22,13 @@ import yaml
 from obfuscator import obfuscate_alert, ObfuscationLevel
 from prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, MITRE_MAPPING
 
+
+# ---------------------------------------------------------------------------
+# Secret / env helpers
+# ---------------------------------------------------------------------------
+
 def read_secret(env_var: str) -> Optional[str]:
-    """Read a secret from env var or Docker secret file."""
+    """Read a secret from env var or Docker secret file (_FILE pattern)."""
     file_path = os.environ.get(f"{env_var}_FILE")
     if file_path:
         try:
@@ -33,15 +38,42 @@ def read_secret(env_var: str) -> Optional[str]:
             pass
     return os.environ.get(env_var)
 
+
+_SECRET_VARS = {'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'OLLAMA_API_KEY', 'GRAFANA_ADMIN_PASSWORD'}
+
+
+def expand_env_vars(obj):
+    """Recursively expand environment variables in config values."""
+    if isinstance(obj, dict):
+        return {k: expand_env_vars(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [expand_env_vars(item) for item in obj]
+    elif isinstance(obj, str):
+        def replace_var(match):
+            var_name = match.group(1)
+            default = match.group(3) if match.group(3) else ''
+            if var_name in _SECRET_VARS:
+                value = read_secret(var_name)
+                return value if value is not None else default
+            return os.environ.get(var_name, default)
+        return re.sub(r'\$\{([^}:]+)(:-([^}]*))?\}', replace_var, obj)
+    return obj
+
+
+# ---------------------------------------------------------------------------
+# Loki client
+# ---------------------------------------------------------------------------
+
 class LokiClient:
     """Client for querying Falco alerts from Loki."""
-    
+
     def __init__(self, url: str):
+        # FIX #1: No hidden default — caller must supply a URL explicitly.
         if not url:
             raise ValueError("Loki URL must be provided")
         self.url = url.rstrip('/')
         self.session = requests.Session()
-    
+
     def query_range(self, query: str, start: datetime, end: datetime, limit: int = 100) -> List[dict]:
         """Query Loki for Falco alerts in a time range."""
         params = {
@@ -50,17 +82,19 @@ class LokiClient:
             'end': int(end.timestamp() * 1e9),
             'limit': limit,
         }
-        
+
         try:
-            response = self.session.get(f"{self.url}/loki/api/v1/query_range", params=params, timeout=30)
+            response = self.session.get(
+                f"{self.url}/loki/api/v1/query_range", params=params, timeout=30
+            )
             response.raise_for_status()
         except requests.exceptions.RequestException as e:
             print(f"Error querying Loki: {e}", file=sys.stderr)
             return []
-        
+
         data = response.json()
         alerts = []
-        
+
         for stream in data.get('data', {}).get('result', []):
             labels = stream.get('stream', {})
             for value in stream.get('values', []):
@@ -69,19 +103,20 @@ class LokiClient:
                     alert = json.loads(log_line)
                 except json.JSONDecodeError:
                     alert = {'output': log_line}
-                
+
                 alert['_labels'] = labels
                 alert['_timestamp'] = datetime.fromtimestamp(int(timestamp_ns) / 1e9)
                 alerts.append(alert)
-        
+
         return alerts
-    
+
     def push(self, labels: Dict[str, str], log_line: str, timestamp: Optional[datetime] = None) -> bool:
         """Push enriched analysis result back to Loki."""
         if timestamp is None:
             timestamp = datetime.now()
-        
+
         ts_ns = str(int(timestamp.timestamp() * 1e9))
+
         payload = {
             "streams": [
                 {
@@ -90,7 +125,7 @@ class LokiClient:
                 }
             ]
         }
-        
+
         try:
             response = self.session.post(
                 f"{self.url}/loki/api/v1/push",
@@ -104,16 +139,25 @@ class LokiClient:
             print(f"Failed to push to Loki: {e}", file=sys.stderr)
             return False
 
+
+# ---------------------------------------------------------------------------
+# LLM providers
+# ---------------------------------------------------------------------------
+
 class LLMProvider:
     """Base class for LLM providers."""
+
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
         raise NotImplementedError
 
+
 class OllamaProvider(LLMProvider):
-    def __init__(self, url: str, model: str):
+    """Local Ollama LLM provider - recommended for privacy."""
+
+    def __init__(self, url: str = "http://ollama:11434", model: str = "llama3.1:8b"):
         self.url = url.rstrip('/')
         self.model = model
-    
+
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
         response = requests.post(
             f"{self.url}/api/chat",
@@ -129,14 +173,18 @@ class OllamaProvider(LLMProvider):
             timeout=120
         )
         response.raise_for_status()
+
         content = response.json().get('message', {}).get('content', '{}')
         return json.loads(content)
 
+
 class OpenAIProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str):
+    """OpenAI API provider - requires API key."""
+
+    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
         self.api_key = api_key
         self.model = model
-    
+
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
         response = requests.post(
             "https://api.openai.com/v1/chat/completions",
@@ -155,14 +203,18 @@ class OpenAIProvider(LLMProvider):
             timeout=60
         )
         response.raise_for_status()
+
         content = response.json()['choices'][0]['message']['content']
         return json.loads(content)
 
+
 class AnthropicProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str):
+    """Anthropic Claude API provider - requires API key."""
+
+    def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
         self.api_key = api_key
         self.model = model
-    
+
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
         response = requests.post(
             "https://api.anthropic.com/v1/messages",
@@ -175,21 +227,28 @@ class AnthropicProvider(LLMProvider):
                 "model": self.model,
                 "max_tokens": 4096,
                 "system": system_prompt,
-                "messages": [{"role": "user", "content": user_prompt}]
+                "messages": [
+                    {"role": "user", "content": user_prompt}
+                ]
             },
             timeout=60
         )
         response.raise_for_status()
+
         content = response.json()['content'][0]['text']
         try:
             return json.loads(content)
         except json.JSONDecodeError:
             match = re.search(r'\{.*\}', content, re.DOTALL)
-            if match: return json.loads(match.group())
+            if match:
+                return json.loads(match.group())
             raise
 
+
 class GeminiProvider(LLMProvider):
-    def __init__(self, api_key: str, model: str):
+    """Google Gemini API provider using the modern GenAI SDK."""
+
+    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
         self.model_name = model
         self.client = genai.Client(api_key=api_key)
 
@@ -198,13 +257,22 @@ class GeminiProvider(LLMProvider):
             response = self.client.models.generate_content(
                 model=self.model_name,
                 contents=f"{system_prompt}\n\n{user_prompt}",
-                config=types.GenerateContentConfig(response_mime_type="application/json")
+                config=types.GenerateContentConfig(
+                    response_mime_type="application/json",
+                )
             )
             return json.loads(response.text)
         except Exception as e:
             return {"error": str(e), "success": False}
 
+
+# ---------------------------------------------------------------------------
+# Main analyzer
+# ---------------------------------------------------------------------------
+
 class AlertAnalyzer:
+    """Main analyzer class for Falco alerts."""
+
     def __init__(self, config: dict):
         self.config = config
         self.loki_url = (
@@ -215,61 +283,103 @@ class AlertAnalyzer:
         self.log_client = LokiClient(self.loki_url)
         self.obfuscation_level = config.get('analysis', {}).get('obfuscation_level', 'standard')
         self.provider = self._create_provider()
-    
+
     def _create_provider(self) -> LLMProvider:
+        """Create the configured LLM provider (default: ollama)."""
         analysis_config = self.config.get('analysis', {})
+
+        # FIX #4: Runtime env override for LLM_PROVIDER.
         provider_name = (
-            os.getenv("LLM_PROVIDER") 
-            or analysis_config.get('provider') 
+            os.getenv("LLM_PROVIDER")
+            or analysis_config.get('provider')
             or 'ollama'
         )
-        
+
         if provider_name == 'ollama':
             ollama_config = analysis_config.get('ollama', {})
-            url = os.getenv("OLLAMA_URL") or ollama_config.get('url') or "http://ollama:11434"
-            model = os.getenv("OLLAMA_MODEL") or ollama_config.get('model') or "llama3.1:8b"
+            # FIX #2: Env vars take priority over config for Ollama.
+            url = (
+                os.getenv("OLLAMA_URL")
+                or ollama_config.get('url')
+                or "http://ollama:11434"
+            )
+            model = (
+                os.getenv("OLLAMA_MODEL")
+                or ollama_config.get('model')
+                or "llama3.1:8b"
+            )
             return OllamaProvider(url=url, model=model)
 
         elif provider_name == 'openai':
             openai_config = analysis_config.get('openai', {})
-            api_key = read_secret("OPENAI_API_KEY") or openai_config.get('api_key')
-            model = os.getenv("OPENAI_MODEL") or openai_config.get('model') or "gpt-4o-mini"
-            return OpenAIProvider(api_key=api_key, model=model)
+            # FIX #3: Use read_secret() — supports _FILE Docker secrets pattern.
+            api_key = (
+                openai_config.get('api_key')
+                or read_secret("OPENAI_API_KEY")
+                or ""
+            )
+            return OpenAIProvider(
+                api_key=api_key,
+                model=openai_config.get('model', 'gpt-4o-mini')
+            )
 
         elif provider_name == 'anthropic':
             anthropic_config = analysis_config.get('anthropic', {})
-            api_key = read_secret("ANTHROPIC_API_KEY") or anthropic_config.get('api_key')
-            model = os.getenv("ANTHROPIC_MODEL") or anthropic_config.get('model') or "claude-3-5-sonnet-20240620"
-            return AnthropicProvider(api_key=api_key, model=model)
+            # FIX #3: Use read_secret() — supports _FILE Docker secrets pattern.
+            api_key = (
+                anthropic_config.get('api_key')
+                or read_secret("ANTHROPIC_API_KEY")
+                or ""
+            )
+            return AnthropicProvider(
+                api_key=api_key,
+                model=anthropic_config.get('model', 'claude-sonnet-4-20250514')
+            )
 
         elif provider_name == 'gemini':
             gemini_config = analysis_config.get('gemini', {})
-            api_key = read_secret("GEMINI_API_KEY") or gemini_config.get('api_key')
-            model = os.getenv("GEMINI_MODEL") or gemini_config.get('model') or "gemini-1.5-flash-latest"
-            return GeminiProvider(api_key=api_key, model=model)
-        
-        raise ValueError(f"Unknown provider: {provider_name}")
+            # FIX #3: Use read_secret() — supports _FILE Docker secrets pattern.
+            api_key = (
+                gemini_config.get('api_key')
+                or read_secret("GEMINI_API_KEY")
+                or ""
+            )
+            return GeminiProvider(
+                api_key=api_key,
+                model=gemini_config.get('model', 'gemini-3-flash-preview')
+            )
 
-    def fetch_alerts(self, priority: Optional[str] = None, last: str = "1h", limit: int = 10) -> List[dict]:
+        else:
+            raise ValueError(f"Unknown provider: {provider_name}")
+
+    def fetch_alerts(self, priority: Optional[str] = None,
+                     last: str = "1h", limit: int = 10) -> List[dict]:
+        """Fetch Falco alerts from Loki."""
         duration_map = {'m': 'minutes', 'h': 'hours', 'd': 'days'}
         unit = last[-1]
-        delta = timedelta(**{duration_map[unit]: int(last[:-1])})
+        if unit not in duration_map:
+            raise ValueError(f"Invalid time unit '{unit}'. Use 'm' (minutes), 'h' (hours), or 'd' (days).")
+        value = int(last[:-1])
+        delta = timedelta(**{duration_map[unit]: value})
+
         end = datetime.now()
         start = end - delta
-        
-        # LogQL optimization: Add limit inside the query for Loki efficiency
-        query_base = '{source=~"syscall|k8s_audit"}'
+
+        # FIX #6 (nice-to-have): embed limit in LogQL to avoid stream-level explosion.
         if priority:
-            query_base = f'{{source=~"syscall|k8s_audit", priority="{priority}"}}'
-        
-        query = f'{query_base} | limit {limit}'
+            query = f'{{source=~"syscall|k8s_audit", priority="{priority}"}} | limit {limit}'
+        else:
+            query = f'{{source=~"syscall|k8s_audit"}} | limit {limit}'
+
         return self.log_client.query_range(query, start, end, limit)
 
     def analyze_alert(self, alert: dict, dry_run: bool = False) -> dict:
+        """Analyze a single Falco alert."""
         obfuscated, mapping = obfuscate_alert(alert, self.obfuscation_level)
+
         labels = alert.get('_labels', {})
         output_fields = obfuscated.get('output_fields', {})
-        
+
         user_prompt = USER_PROMPT_TEMPLATE.format(
             rule_name=labels.get('rule', alert.get('rule', 'Unknown')),
             priority=labels.get('priority', alert.get('priority', 'Unknown')),
@@ -289,107 +399,266 @@ class AlertAnalyzer:
             uid=output_fields.get('user.uid', 'N/A'),
             terminal=output_fields.get('proc.tty', 'N/A'),
         )
-        
+
         if dry_run:
-            return {'obfuscated_prompt': user_prompt, 'obfuscation_mapping': mapping}
+            return {
+                'obfuscated_prompt': user_prompt,
+                'obfuscation_mapping': mapping,
+                'note': 'Dry run - no LLM call made'
+            }
 
         rule_name = labels.get('rule', alert.get('rule', ''))
         quick_mitre = MITRE_MAPPING.get(rule_name, None)
-        
+
         try:
             analysis = self.provider.analyze(SYSTEM_PROMPT, user_prompt)
         except Exception as e:
-            analysis = {'error': str(e), 'fallback_mitre': quick_mitre}
-        
-        return {'original_alert': alert, 'obfuscated_alert': obfuscated, 'obfuscation_mapping': mapping, 'analysis': analysis}
+            analysis = {
+                'error': str(e),
+                'fallback_mitre': quick_mitre
+            }
+
+        return {
+            'original_alert': alert,
+            'obfuscated_alert': obfuscated,
+            'obfuscation_mapping': mapping,
+            'analysis': analysis
+        }
 
     def store_analysis(self, result: dict) -> bool:
+        """Store analysis result in Loki for Grafana dashboards."""
         analysis = result.get('analysis', {})
         original = result.get('original_alert', {})
         labels = original.get('_labels', {})
+
         mitre = analysis.get('mitre_attack', {})
         risk = analysis.get('risk', {})
-        
+        fp = analysis.get('false_positive', {})
+
         enriched_labels = {
             'source': 'analysis',
             'type': 'enriched',
             'original_rule': labels.get('rule', 'unknown'),
             'original_priority': labels.get('priority', 'unknown'),
             'hostname': labels.get('hostname', 'unknown'),
-            'severity': str(risk.get('severity', 'unknown')).lower(),
+            'severity': risk.get('severity', 'unknown').lower(),
             'mitre_tactic': mitre.get('tactic', 'unknown').replace(' ', '_'),
             'mitre_technique': mitre.get('technique_id', 'unknown'),
+            'false_positive_likelihood': str(fp.get('likelihood', 'unknown')).lower(),
         }
-        
-        return self.log_client.push(enriched_labels, json.dumps(analysis), original.get('_timestamp'))
+
+        enriched_entry = {
+            'timestamp': original.get('_timestamp', datetime.now()).isoformat()
+                if isinstance(original.get('_timestamp'), datetime)
+                else str(original.get('_timestamp', '')),
+            'original_output': original.get('output', ''),
+            'rule': labels.get('rule', ''),
+            'priority': labels.get('priority', ''),
+            'hostname': labels.get('hostname', ''),
+            'attack_vector': analysis.get('attack_vector', ''),
+            'mitre_attack': mitre,
+            'risk': risk,
+            'mitigations': analysis.get('mitigations', {}),
+            'false_positive': analysis.get('false_positive', {}),
+            'summary': analysis.get('summary', ''),
+            'investigate': analysis.get('investigate', []),
+            'prometheus_correlation': {
+                'node_cpu_usage': f'rate(node_cpu_seconds_total{{instance=~"{labels.get("hostname", ".*")}:9100"}}[5m])',
+                'container_memory': f'container_memory_usage_bytes{{pod=~"{labels.get("k8s_pod_name", ".*")}"}}',
+            }
+        }
+
+        return self.log_client.push(
+            enriched_labels,
+            json.dumps(enriched_entry),
+            original.get('_timestamp')
+        )
 
     def analyze_batch(self, alerts: List[dict], dry_run: bool = False, store: bool = False) -> List[dict]:
+        """Analyze multiple Falco alerts."""
         results = []
         for i, alert in enumerate(alerts):
             print(f"Analyzing alert {i+1}/{len(alerts)}...", file=sys.stderr)
             result = self.analyze_alert(alert, dry_run)
             results.append(result)
+
             if store and not dry_run and 'error' not in result.get('analysis', {}):
-                self.store_analysis(result)
+                if self.store_analysis(result):
+                    print(f"  ✓ Stored analysis in Loki", file=sys.stderr)
+                else:
+                    print(f"  ✗ Failed to store analysis", file=sys.stderr)
+
         return results
 
-_SECRET_VARS = {'ANTHROPIC_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY', 'GRAFANA_ADMIN_PASSWORD'}
 
-def expand_env_vars(obj):
-    if isinstance(obj, dict):
-        return {k: expand_env_vars(v) for k, v in obj.items()}
-    elif isinstance(obj, list):
-        return [expand_env_vars(item) for item in obj]
-    elif isinstance(obj, str):
-        def replace_var(match):
-            var_name = match.group(1)
-            default = match.group(3) if match.group(3) else ''
-            if var_name in _SECRET_VARS:
-                val = read_secret(var_name)
-                return val if val is not None else default
-            return os.environ.get(var_name, default)
-        return re.sub(r'\$\{([^}:]+)(:-([^}]*))?\}', replace_var, obj)
-    return obj
+# ---------------------------------------------------------------------------
+# Config loader
+# ---------------------------------------------------------------------------
 
 def load_config(config_path: Optional[str] = None) -> dict:
-    config_path = config_path or os.getenv("CONFIG_PATH") or "/app/config.yaml"
-    if os.path.exists(config_path):
+    """Load configuration from file with environment variable expansion."""
+    config = None
+
+    config_path = config_path or os.getenv("CONFIG_PATH")
+
+    if config_path and os.path.exists(config_path):
         with open(config_path) as f:
-            return expand_env_vars(yaml.safe_load(f))
-    return {'analysis': {'provider': 'ollama'}, 'loki': {'url': 'http://loki:3100'}}
+            config = yaml.safe_load(f)
+    elif os.path.exists("/app/config.yaml"):
+        with open("/app/config.yaml") as f:
+            config = yaml.safe_load(f)
+    elif os.path.exists("config.yaml"):
+        with open("config.yaml") as f:
+            config = yaml.safe_load(f)
+
+    if config:
+        return expand_env_vars(config)
+
+    # Hard fallback
+    return {
+        'analysis': {
+            'enabled': True,
+            'obfuscation_level': 'standard',
+            'provider': 'ollama',
+            'ollama': {
+                'url': os.getenv("OLLAMA_URL", "http://ollama:11434"),
+                'model': 'llama3.1:8b'
+            }
+        },
+        'loki': {
+            'url': os.getenv("LOKI_URL", "http://loki:3100")
+        }
+    }
+
+
+# ---------------------------------------------------------------------------
+# Output helpers
+# ---------------------------------------------------------------------------
 
 def print_analysis(result: dict, verbose: bool = False):
+    """Pretty print analysis results."""
     analysis = result.get('analysis', {})
+
     if 'error' in analysis:
-        print(f"\n❌ Error: {analysis['error']}")
+        print(f"\n❌ Analysis Error: {analysis['error']}")
+        if 'fallback_mitre' in analysis and analysis['fallback_mitre']:
+            print(f"   Fallback MITRE: {analysis['fallback_mitre']}")
         return
-    print(f"\n🎯 Attack Vector: {analysis.get('attack_vector', 'N/A')}")
-    print(f"📝 Summary: {analysis.get('summary', 'N/A')}")
+
+    print("\n" + "="*70)
+    print("🔍 SECURITY ALERT ANALYSIS")
+    print("="*70)
+
+    print(f"\n🎯 Attack Vector:")
+    print(f"   {analysis.get('attack_vector', 'N/A')}")
+
+    mitre = analysis.get('mitre_attack', {})
+    print(f"\n📊 MITRE ATT&CK:")
+    print(f"   Tactic: {mitre.get('tactic', 'N/A')}")
+    print(f"   Technique: {mitre.get('technique_id', 'N/A')} - {mitre.get('technique_name', 'N/A')}")
+    if mitre.get('sub_technique'):
+        print(f"   Sub-technique: {mitre.get('sub_technique')}")
+
+    risk = analysis.get('risk', {})
+    severity_colors = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢'}
+    print(f"\n⚠️  Risk Assessment:")
+    print(f"   Severity: {severity_colors.get(risk.get('severity', ''), '⚪')} {risk.get('severity', 'N/A')}")
+    print(f"   Confidence: {risk.get('confidence', 'N/A')}")
+    print(f"   Impact: {risk.get('impact', 'N/A')}")
+
+    mitigations = analysis.get('mitigations', {})
+    print(f"\n🛡️  Mitigations:")
+    if mitigations.get('immediate'):
+        print("   Immediate:")
+        for m in mitigations['immediate']:
+            print(f"     • {m}")
+    if mitigations.get('short_term'):
+        print("   Short-term:")
+        for m in mitigations['short_term']:
+            print(f"     • {m}")
+    if mitigations.get('long_term'):
+        print("   Long-term:")
+        for m in mitigations['long_term']:
+            print(f"     • {m}")
+
+    fp = analysis.get('false_positive', {})
+    print(f"\n🤔 False Positive Assessment:")
+    print(f"   Likelihood: {fp.get('likelihood', 'N/A')}")
+    if fp.get('common_causes'):
+        print("   Common legitimate causes:")
+        for cause in fp['common_causes'][:3]:
+            print(f"     • {cause}")
+
+    print(f"\n📝 Summary:")
+    print(f"   {analysis.get('summary', 'N/A')}")
+
+    if verbose:
+        print(f"\n🔐 Obfuscation Mapping:")
+        print(json.dumps(result.get('obfuscation_mapping', {}), indent=2))
+
+    print("\n" + "="*70)
+
+
+# ---------------------------------------------------------------------------
+# CLI entry point
+# ---------------------------------------------------------------------------
 
 def main():
-    parser = argparse.ArgumentParser(description='Alert Analyzer')
-    parser.add_argument('--config', '-c')
-    parser.add_argument('--priority', '-p')
-    parser.add_argument('--last', '-l', default='1h')
-    parser.add_argument('--limit', '-n', type=int, default=5)
-    parser.add_argument('--dry-run', '-d', action='store_true')
-    parser.add_argument('--store', '-s', action='store_true')
-    parser.add_argument('--json', '-j', action='store_true')
+    parser = argparse.ArgumentParser(
+        description='SIB Alert Analyzer - AI-powered Falco security alert analysis'
+    )
+    parser.add_argument('--config', '-c', help='Path to config file')
+    parser.add_argument('--priority', '-p', choices=['Critical', 'Error', 'Warning', 'Notice'],
+                        help='Filter by Falco priority')
+    parser.add_argument('--last', '-l', default='1h',
+                        help='Time range (e.g., 15m, 1h, 24h, 7d)')
+    parser.add_argument('--limit', '-n', type=int, default=5,
+                        help='Maximum number of alerts to analyze')
+    parser.add_argument('--dry-run', '-d', action='store_true',
+                        help='Show obfuscated data without calling LLM')
+    parser.add_argument('--store', '-s', action='store_true',
+                        help='Store analysis results in Loki for Grafana dashboards')
+    parser.add_argument('--verbose', '-v', action='store_true',
+                        help='Show detailed output including obfuscation mapping')
+    parser.add_argument('--json', '-j', action='store_true',
+                        help='Output raw JSON instead of formatted text')
+    parser.add_argument('--loki-url', help='Override Loki URL')
+
     args = parser.parse_args()
 
     config = load_config(args.config)
+
+    if args.loki_url:
+        config.setdefault('loki', {})['url'] = args.loki_url
+
+    if not config.get('analysis', {}).get('enabled', True):
+        print("Analysis is disabled in config. Set analysis.enabled: true to enable.")
+        sys.exit(1)
+
     analyzer = AlertAnalyzer(config)
+
+    print(f"Fetching Falco alerts from last {args.last}...", file=sys.stderr)
     alerts = analyzer.fetch_alerts(priority=args.priority, last=args.last, limit=args.limit)
-    
+
     if not alerts:
-        print("No alerts found.")
-        return
+        print("No Falco alerts found matching criteria.")
+        sys.exit(0)
+
+    print(f"Found {len(alerts)} alerts. Analyzing...", file=sys.stderr)
 
     results = analyzer.analyze_batch(alerts, dry_run=args.dry_run, store=args.store)
+
     if args.json:
-        print(json.dumps(results, indent=2, default=str))
+        def json_serial(obj):
+            if isinstance(obj, datetime):
+                return obj.isoformat()
+            raise TypeError(f"Type {type(obj)} not serializable")
+
+        print(json.dumps(results, indent=2, default=json_serial))
     else:
-        for r in results: print_analysis(r)
+        for result in results:
+            print_analysis(result, verbose=args.verbose)
+
 
 if __name__ == '__main__':
     main()
