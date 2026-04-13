@@ -21,7 +21,7 @@
       },
       "id": 1,
       "options": {
-        "content": "### LogQL Query Examples\n| Query | Description |\n|-------|-------------|\n| `{source=\"syscall\"} \\| json` | All events with JSON parsing |\n| `{source=\"syscall\"} \\| json \\| priority=\"Warning\"` | Warning events (field filter) |\n| `{source=\"syscall\"} \\| json \\| rule=~\".*shell.*\"` | Shell-related rules |\n\n> **Note**: `rule` is filtered via log content (`| json`), not as a high-cardinality label.",
+        "content": "### LogQL Query Examples\n| Query | Description |\n|-------|-------------|\n| `{source=\"syscall\", priority=\"Warning\"}` | Filter by priority label |\n| `{source=\"syscall\", rule=~\".*shell.*\"}` | Shell-related rules |\n| `{source=\"syscall\", hostname=~\"prod-.*\"}` | Production hosts |\n\n> **Note**: Fields are indexed as Loki labels for fast queries. Click any log line to analyze with AI.",
         "mode": "markdown"
       },
       "title": "Query Help",
@@ -95,7 +95,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by (priority) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} | json | priority=~\"$priority\" [$__interval]))",
+          "expr": "sum by (priority) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"} [$__interval]))",
           "legendFormat": "{{priority}}",
           "refId": "A"
         }
@@ -141,7 +141,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "sum by (rule) (count_over_time({source=~\"syscall|k8s_audit\"} | json | priority=~\"$priority\" [5m]))",
+          "expr": "sum by (rule) (count_over_time({source=~\"syscall|k8s_audit\", priority=~\"$priority\"} [5m]))",
           "legendFormat": "{{rule}}",
           "refId": "A"
         }
@@ -185,7 +185,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "topk(10, sum by (hostname) (count_over_time({source=~\"syscall|k8s_audit\"} | json [5m])))",
+          "expr": "topk(10, sum by (hostname) (count_over_time({source=~\"syscall|k8s_audit\"} [5m])))",
           "legendFormat": "{{hostname}}",
           "refId": "A",
           "instant": true
@@ -223,7 +223,7 @@
           "links": [
             {
               "title": "🤖 Analyze with AI",
-              "url": "http://analyser:5000/analyze?rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
+              "url": "http://analyser:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
               "targetBlank": true
             }
           ]
@@ -237,7 +237,7 @@
                 "value": [
                   {
                     "title": "🤖 Analyze with AI",
-                    "url": "http://analyser:5000/analyze?rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
+                    "url": "http://analyser:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
                     "targetBlank": true
                   }
                 ]
@@ -249,7 +249,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} | json | priority=~\"$priority\"",
+          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}",
           "refId": "A"
         }
       ],
@@ -300,6 +300,10 @@
             ]
           },
           {
+            "matcher": { "id": "byName", "options": "detected_level" },
+            "properties": [{ "id": "custom.width", "value": 100 }]
+          },
+          {
             "matcher": { "id": "byName", "options": "rule" },
             "properties": [{ "id": "custom.width", "value": 200 }]
           },
@@ -316,7 +320,7 @@
                 "value": [
                   {
                     "title": "🤖 Analyze with AI",
-                    "url": "http://analyser:5000/analyze?rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
+                    "url": "http://analyser:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
                     "targetBlank": true
                   }
                 ]
@@ -360,7 +364,7 @@
       "targets": [
         {
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} | json | priority=~\"$priority\"",
+          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}",
           "refId": "A",
           "maxLines": 500
         }
@@ -417,5 +421,5 @@
   "timezone": "browser",
   "title": "Events Explorer (AI-Enabled)",
   "uid": "sib-events-explorer-ai",
-  "version": 2
+  "version": 3
 }

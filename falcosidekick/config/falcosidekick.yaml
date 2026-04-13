@@ -19,8 +19,8 @@ loki:
   hostport: "http://loki:3100"
   tenant: ""
   format: "json"
-  minimumpriority: "debug"
-  extralabels: "hostname,container,container_name,proc.name"
+  minimumpriority: "warning"
+  extralabels: "source,priority,rule,tags,hostname,container,container_name,proc.name"
 
 # =========================
 # Discord ALERTING
@@ -42,8 +42,8 @@ teams:
 # =========================
 webhook:
   enabled: false
-  address: "http://<SOAR webhook>"
-  minimumpriority: "critical"
+#  address: "http://<SOAR webhook>"
+#  minimumpriority: "critical"
 # =========================
 # FILTERING (IMPORTANT)
 # =========================
