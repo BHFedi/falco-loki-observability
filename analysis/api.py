@@ -67,6 +67,7 @@ ANALYSIS_TEMPLATE = """
         .card.high { border-left-color: #ff9830; }
         .card.medium { border-left-color: #fade2a; }
         .card.low { border-left-color: #73bf69; }
+        .card.unknown { border-left-color: #8e8e8e; }
         .original-alert {
             background: #181b1f;
             padding: 15px;
@@ -106,6 +107,7 @@ ANALYSIS_TEMPLATE = """
         .severity-high { background: #ff9830; color: black; }
         .severity-medium { background: #fade2a; color: black; }
         .severity-low { background: #73bf69; color: black; }
+        .severity-unknown { background: #555; color: #ccc; }
         .mitigation-list { list-style: none; padding-left: 0; }
         .mitigation-list li {
             padding: 8px 0;
@@ -130,6 +132,7 @@ ANALYSIS_TEMPLATE = """
         .fp-low { color: #73bf69; }
         .fp-medium { color: #fade2a; }
         .fp-high { color: #f2495c; }
+        .fp-unknown { color: #8e8e8e; }
         .investigate-list {
             background: #181b1f;
             padding: 15px;
@@ -163,6 +166,16 @@ ANALYSIS_TEMPLATE = """
             border-radius: 8px;
             color: #f2495c;
         }
+        .ai-failed-warning {
+            background: #ff983022;
+            border: 1px solid #ff9830;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            color: #ff9830;
+        }
+        .ai-failed-warning strong { color: #ff9830; }
         .privacy-note {
             background: #73bf6922;
             border: 1px solid #73bf69;
@@ -218,6 +231,15 @@ ANALYSIS_TEMPLATE = """
             <strong>Analysis Error:</strong> {{ error }}
         </div>
         {% else %}
+
+        {% if ai_failed %}
+        <div class="ai-failed-warning">
+            <strong>⚠️ AI Analysis Failed:</strong> The LLM could not produce a structured analysis for this alert.
+            The fields below contain fallback defaults — <em>not AI-generated output</em>.
+            Manual triage is required. Check server logs for details.
+            {% if ai_error %}<br><code>Error: {{ ai_error }}</code>{% endif %}
+        </div>
+        {% endif %}
         
         <div class="privacy-note">
             <strong>🔐 Privacy Protected:</strong> Sensitive data was obfuscated before AI analysis. 
@@ -275,7 +297,7 @@ ANALYSIS_TEMPLATE = """
                 <div class="label">Risk Assessment</div>
                 <div class="value">
                     {% if analysis.risk %}
-                    <span class="severity-badge severity-{{ (analysis.risk.severity or 'medium')|lower }}">
+                    <span class="severity-badge severity-{{ (analysis.risk.severity or 'unknown')|lower }}">
                         {{ analysis.risk.severity or 'Unknown' }}
                     </span>
                     <span style="margin-left: 10px;">Confidence: {{ analysis.risk.confidence or 'Unknown' }}</span>
@@ -324,7 +346,7 @@ ANALYSIS_TEMPLATE = """
         <h2>🤔 False Positive Assessment</h2>
         <div class="false-positive">
             {% if analysis.false_positive %}
-            <p class="fp-likelihood fp-{{ (analysis.false_positive.likelihood or 'medium')|lower }}">
+            <p class="fp-likelihood fp-{{ (analysis.false_positive.likelihood or 'unknown')|lower }}">
                 Likelihood: {{ analysis.false_positive.likelihood or 'Unknown' }}
             </p>
             {% if analysis.false_positive.common_causes %}
@@ -456,6 +478,7 @@ def save_to_cache(cache_key: str, result: dict, original_output: str, rule: str,
         'analysis': result.get('analysis', {}),
         'obfuscated_output': result.get('obfuscated_alert', {}).get('output', '') if isinstance(result.get('obfuscated_alert'), dict) else '',
         'obfuscation_mapping': result.get('obfuscation_mapping', {}),
+        'ai_failed': bool(result.get('analysis', {}).get('error')),
         'dedup_count': 1,
         'last_seen': datetime.now().isoformat(),
     }
@@ -484,10 +507,50 @@ def list_cached_analyses(limit: int = 50) -> list:
                     'severity': data.get('analysis', {}).get('risk', {}).get('severity', 'unknown'),
                     'dedup_count': data.get('dedup_count', 1),
                     'last_seen': data.get('last_seen'),
+                    'ai_failed': data.get('ai_failed', False),
                 })
         except Exception:
             pass
     return results
+
+
+# ==================== Helper ====================
+
+def _render_analysis(
+    analysis: dict,
+    original_output: str,
+    obfuscated_output: str,
+    obfuscation_mapping: dict,
+    show_mapping: bool,
+    timestamp: str,
+    cached: bool,
+    error: Optional[str] = None,
+):
+    """Central helper that renders ANALYSIS_TEMPLATE with all required variables.
+
+    Handles the ai_failed flag so every call site doesn't repeat the same logic.
+    """
+    ai_failed = bool(analysis.get('error'))
+    ai_error = analysis.get('error', '') if ai_failed else ''
+
+    risk = analysis.get('risk', {})
+    severity = (risk.get('severity') or 'unknown').lower()
+    severity_class = severity if severity in ('critical', 'high', 'medium', 'low') else 'unknown'
+
+    return render_template_string(
+        ANALYSIS_TEMPLATE,
+        error=error,
+        analysis=analysis,
+        original_output=original_output,
+        obfuscated_output=obfuscated_output,
+        severity_class=severity_class,
+        obfuscation_mapping=obfuscation_mapping,
+        show_mapping=show_mapping,
+        timestamp=timestamp,
+        cached=cached,
+        ai_failed=ai_failed,
+        ai_error=ai_error,
+    )
 
 
 # ==================== Routes ====================
@@ -500,12 +563,7 @@ def health():
 
 @app.route('/api/health/all', methods=['GET'])
 def health_all():
-    """Aggregate health check for all services (Loki stack).
-
-    Returns structured JSON with the status of every component.
-    Uses Docker-internal hostnames  by default; override with
-    environment variables if running outside Docker.
-    """
+    """Aggregate health check for all services (Loki stack)."""
     timeout = float(request.args.get('timeout', 3))
 
     checks = {
@@ -540,7 +598,6 @@ def health_all():
         except Exception as e:
             results[name] = {'status': 'error', 'detail': str(e)}
 
-    # Self (analysis API) is always healthy if we're serving this request
     results['analysis'] = {'status': 'healthy'}
 
     statuses = [s['status'] for s in results.values()]
@@ -592,15 +649,21 @@ def analyze_api():
         
         analyzer = AlertAnalyzer(config)
         result = analyzer.analyze_alert(alert, dry_run=False)
+        analysis = result.get('analysis', {})
         
         if data.get('store', False):
             analyzer.store_analysis(result)
         
-        return jsonify({
+        response_body = {
             'success': True,
-            'analysis': result.get('analysis', {}),
-            'obfuscation_mapping': result.get('obfuscation_mapping', {})
-        })
+            'analysis': analysis,
+            'obfuscation_mapping': result.get('obfuscation_mapping', {}),
+            'ai_failed': bool(analysis.get('error')),
+        }
+        if analysis.get('error'):
+            response_body['ai_error'] = analysis['error']
+
+        return jsonify(response_body)
         
     except Exception as e:
         logger.exception("Analysis failed")
@@ -629,16 +692,15 @@ def analyze_page():
         show_mapping = request.args.get('show_mapping', 'false').lower() == 'true'
         
         if not output:
-            return render_template_string(ANALYSIS_TEMPLATE, 
-                error="No alert output provided. Use ?output=... parameter.",
+            return _render_analysis(
                 analysis={},
                 original_output='',
                 obfuscated_output='',
-                severity_class='',
                 obfuscation_mapping={},
                 show_mapping=False,
                 timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                cached=False
+                cached=False,
+                error="No alert output provided. Use ?output=... parameter.",
             )
         
         # Check cache first
@@ -646,21 +708,14 @@ def analyze_page():
         cached_result = get_cached_analysis(cache_key)
         
         if cached_result:
-            analysis = cached_result.get('analysis', {})
-            risk = analysis.get('risk', {})
-            severity = (risk.get('severity') or 'medium').lower()
-            severity_class = severity if severity in ['critical', 'high', 'medium', 'low'] else 'medium'
-            
-            return render_template_string(ANALYSIS_TEMPLATE,
-                error=None,
-                analysis=analysis,
+            return _render_analysis(
+                analysis=cached_result.get('analysis', {}),
                 original_output=output,
                 obfuscated_output=cached_result.get('obfuscated_output', ''),
-                severity_class=severity_class,
                 obfuscation_mapping=cached_result.get('obfuscation_mapping', {}),
                 show_mapping=show_mapping,
                 timestamp=cached_result.get('timestamp', 'cached'),
-                cached=True
+                cached=True,
             )
         
         # Build alert object
@@ -677,9 +732,10 @@ def analyze_page():
         # Analyze
         analyzer = AlertAnalyzer(config)
         result = analyzer.analyze_alert(alert, dry_run=False)
+        analysis = result.get('analysis', {})
         
-        # Store in Loki if requested
-        if store and 'error' not in result.get('analysis', {}):
+        # Store in Loki if requested (store even on AI failure so events aren't dropped)
+        if store:
             try:
                 analyzer.store_analysis(result)
             except Exception as e:
@@ -688,38 +744,30 @@ def analyze_page():
         # Save to local cache
         save_to_cache(cache_key, result, output, rule, priority, hostname)
         
-        analysis = result.get('analysis', {})
-        risk = analysis.get('risk', {})
-        severity = (risk.get('severity') or 'medium').lower()
-        severity_class = severity if severity in ['critical', 'high', 'medium', 'low'] else 'medium'
-        
         obfuscated_alert = result.get('obfuscated_alert', {})
         obfuscated_output = obfuscated_alert.get('output', '') if isinstance(obfuscated_alert, dict) else str(obfuscated_alert)
         
-        return render_template_string(ANALYSIS_TEMPLATE,
-            error=None,
+        return _render_analysis(
             analysis=analysis,
             original_output=output,
             obfuscated_output=obfuscated_output,
-            severity_class=severity_class,
             obfuscation_mapping=result.get('obfuscation_mapping', {}),
             show_mapping=show_mapping,
             timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            cached=False
+            cached=False,
         )
         
     except Exception as e:
         logger.exception("Analysis page failed")
-        return render_template_string(ANALYSIS_TEMPLATE,
-            error=str(e),
+        return _render_analysis(
             analysis={},
             original_output=request.args.get('output', ''),
             obfuscated_output='',
-            severity_class='',
             obfuscation_mapping={},
             show_mapping=False,
             timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            cached=False
+            cached=False,
+            error=str(e),
         )
 
 
@@ -737,10 +785,11 @@ def history_page():
             'medium': '#fade2a',
             'low': '#73bf69'
         }.get(str(severity), '#8e8e8e')
+        ai_badge = ' <span style="color:#ff9830;font-size:0.8em;">⚠️ AI failed</span>' if a.get('ai_failed') else ''
         rows += f"""
         <tr onclick="window.location='/history/{escape(a['cache_key'])}'" style="cursor: pointer;">
             <td>{escape(a.get('timestamp', '')[:19])}</td>
-            <td>{escape(a.get('rule', ''))}</td>
+            <td>{escape(a.get('rule', ''))}{ai_badge}</td>
             <td>{escape(a.get('priority', ''))}</td>
             <td style="color: {severity_color}; font-weight: bold;">{severity}</td>
             <td>{escape(a.get('hostname', ''))}</td>
@@ -783,21 +832,14 @@ def history_detail(cache_key: str):
     if not cached:
         return "Analysis not found", 404
     
-    analysis = cached.get('analysis', {})
-    risk = analysis.get('risk', {})
-    severity = (risk.get('severity') or 'medium').lower()
-    severity_class = severity if severity in ['critical', 'high', 'medium', 'low'] else 'medium'
-    
-    return render_template_string(ANALYSIS_TEMPLATE,
-        error=None,
-        analysis=analysis,
+    return _render_analysis(
+        analysis=cached.get('analysis', {}),
         original_output=cached.get('original_output', ''),
         obfuscated_output=cached.get('obfuscated_output', ''),
-        severity_class=severity_class,
         obfuscation_mapping=cached.get('obfuscation_mapping', {}),
         show_mapping=False,
         timestamp=cached.get('timestamp', 'cached'),
-        cached=True
+        cached=True,
     )
 
 

@@ -68,7 +68,6 @@ class LokiClient:
     """Client for querying Falco alerts from Loki."""
 
     def __init__(self, url: str):
-        # FIX #1: No hidden default — caller must supply a URL explicitly.
         if not url:
             raise ValueError("Loki URL must be provided")
         self.url = url.rstrip('/')
@@ -151,6 +150,88 @@ class LLMProvider:
         raise NotImplementedError
 
 
+def safe_json_parse(text: str) -> dict:
+    """
+    Robustly parse a JSON response from an LLM.
+
+    Handles:
+    - Empty / None responses
+    - Markdown-wrapped JSON (```json ... ```)
+    - Extra text before/after the JSON object
+    - Partial or truncated JSON (returns error dict)
+    """
+    if not text or not text.strip():
+        print("PARSE ERROR: empty response from LLM", file=sys.stderr)
+        return {"error": "empty_response", "raw": ""}
+
+    # Strip markdown code fences if present
+    stripped = re.sub(r'^```(?:json)?\s*', '', text.strip(), flags=re.IGNORECASE)
+    stripped = re.sub(r'\s*```$', '', stripped.strip())
+
+    # Try direct parse first (fastest path)
+    try:
+        return json.loads(stripped)
+    except json.JSONDecodeError:
+        pass
+
+    # Fall back to extracting the first {...} block
+    match = re.search(r'\{.*\}', stripped, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group())
+        except json.JSONDecodeError as e:
+            print(f"PARSE ERROR: JSON decode failed after extraction: {e}", file=sys.stderr)
+            return {"error": "invalid_json", "raw": text[:500]}
+
+    print(f"PARSE ERROR: no JSON object found in response. Raw (first 500 chars): {text[:500]}", file=sys.stderr)
+    return {"error": "no_json_found", "raw": text[:500]}
+
+
+# Sentinel dict used to fill in safe defaults when the LLM analysis fails,
+# so downstream code never silently shows empty "N/A" fields.
+FAILED_ANALYSIS_TEMPLATE = {
+    "attack_vector": "AI_ANALYSIS_FAILED — unable to determine attack vector.",
+    "mitre_attack": {
+        "tactic": "Unknown",
+        "technique_id": "Unknown",
+        "technique_name": "Analysis unavailable",
+        "sub_technique": None,
+    },
+    "risk": {
+        "severity": "Unknown",
+        "confidence": "Low",
+        "impact": "AI analysis failed; manual review required.",
+    },
+    "investigate": ["Manual triage required — AI analysis was unavailable for this alert."],
+    "mitigations": {
+        "immediate": ["Manually review the alert and apply standard incident-response procedures."],
+        "short_term": [],
+        "long_term": [],
+    },
+    "false_positive": {
+        "likelihood": "Unknown",
+        "common_causes": [],
+        "distinguishing_factors": [],
+    },
+    "detection_feedback": {
+        "rule_quality": "Unknown",
+        "improvement_suggestions": [],
+    },
+    "summary": "AI analysis failed for this alert. Manual triage is required.",
+}
+
+
+def make_failed_analysis(error_msg: str, raw: str = "") -> dict:
+    """Return a fully-populated analysis dict that signals AI failure rather than empty N/A fields."""
+    result = FAILED_ANALYSIS_TEMPLATE.copy()
+    result = json.loads(json.dumps(result))  # deep copy via JSON
+    result["error"] = error_msg
+    result["summary"] = f"AI analysis failed: {error_msg}. Manual triage is required."
+    if raw:
+        result["_raw_response"] = raw[:500]
+    return result
+
+
 class OllamaProvider(LLMProvider):
     """Local Ollama LLM provider - recommended for privacy."""
 
@@ -159,100 +240,129 @@ class OllamaProvider(LLMProvider):
         self.model = model
 
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
-        response = requests.post(
-            f"{self.url}/api/chat",
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "stream": False,
-                "format": "json"
-            },
-            timeout=120
-        )
-        response.raise_for_status()
-
-        content = response.json().get('message', {}).get('content', '{}')
-        return json.loads(content)
+        try:
+            response = requests.post(
+                f"{self.url}/api/chat",
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "stream": False,
+                    "format": "json"
+                },
+                timeout=120
+            )
+            response.raise_for_status()
+            content = response.json().get('message', {}).get('content', '')
+            parsed = safe_json_parse(content)
+            if "error" in parsed:
+                return make_failed_analysis(parsed["error"], parsed.get("raw", ""))
+            return parsed
+        except Exception as e:
+            print(f"OllamaProvider error: {e}", file=sys.stderr)
+            return make_failed_analysis(str(e))
 
 
 class OpenAIProvider(LLMProvider):
     """OpenAI API provider - requires API key."""
 
     def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
+        if not api_key:
+            raise ValueError("OpenAI API key is missing")
         self.api_key = api_key
         self.model = model
 
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
-        response = requests.post(
-            "https://api.openai.com/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {self.api_key}",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": self.model,
-                "messages": [
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt}
-                ],
-                "response_format": {"type": "json_object"}
-            },
-            timeout=60
-        )
-        response.raise_for_status()
-
-        content = response.json()['choices'][0]['message']['content']
-        return json.loads(content)
+        try:
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {self.api_key}",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.model,
+                    "messages": [
+                        {"role": "system", "content": system_prompt},
+                        {"role": "user", "content": user_prompt}
+                    ],
+                    "response_format": {"type": "json_object"}
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+            content = response.json()['choices'][0]['message']['content']
+            parsed = safe_json_parse(content)
+            if "error" in parsed:
+                return make_failed_analysis(parsed["error"], parsed.get("raw", ""))
+            return parsed
+        except Exception as e:
+            print(f"OpenAIProvider error: {e}", file=sys.stderr)
+            return make_failed_analysis(str(e))
 
 
 class AnthropicProvider(LLMProvider):
     """Anthropic Claude API provider - requires API key."""
 
     def __init__(self, api_key: str, model: str = "claude-sonnet-4-20250514"):
+        if not api_key:
+            raise ValueError("Anthropic API key is missing")
         self.api_key = api_key
         self.model = model
 
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
-        response = requests.post(
-            "https://api.anthropic.com/v1/messages",
-            headers={
-                "x-api-key": self.api_key,
-                "anthropic-version": "2023-06-01",
-                "Content-Type": "application/json"
-            },
-            json={
-                "model": self.model,
-                "max_tokens": 4096,
-                "system": system_prompt,
-                "messages": [
-                    {"role": "user", "content": user_prompt}
-                ]
-            },
-            timeout=60
-        )
-        response.raise_for_status()
-
-        content = response.json()['content'][0]['text']
         try:
-            return json.loads(content)
-        except json.JSONDecodeError:
-            match = re.search(r'\{.*\}', content, re.DOTALL)
-            if match:
-                return json.loads(match.group())
-            raise
+            response = requests.post(
+                "https://api.anthropic.com/v1/messages",
+                headers={
+                    "x-api-key": self.api_key,
+                    "anthropic-version": "2023-06-01",
+                    "Content-Type": "application/json"
+                },
+                json={
+                    "model": self.model,
+                    "max_tokens": 4096,
+                    "system": system_prompt,
+                    "messages": [
+                        {"role": "user", "content": user_prompt}
+                    ]
+                },
+                timeout=60
+            )
+            response.raise_for_status()
+            content = response.json()['content'][0]['text']
+            parsed = safe_json_parse(content)
+            if "error" in parsed:
+                return make_failed_analysis(parsed["error"], parsed.get("raw", ""))
+            return parsed
+        except Exception as e:
+            print(f"AnthropicProvider error: {e}", file=sys.stderr)
+            return make_failed_analysis(str(e))
 
 
 class GeminiProvider(LLMProvider):
     """Google Gemini API provider using the modern GenAI SDK."""
 
-    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
+    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
+        # Validate API key eagerly so the error is obvious at startup,
+        # not silently swallowed during the first analysis call.
+        if not api_key:
+            raise ValueError("Gemini API key is missing — set GEMINI_API_KEY or gemini.api_key in config")
         self.model_name = model
         self.client = genai.Client(api_key=api_key)
 
     def analyze(self, system_prompt: str, user_prompt: str) -> dict:
+        """
+        Call Gemini and return a parsed analysis dict.
+
+        Robust error handling covers:
+        - Network / API failures  → make_failed_analysis()
+        - Empty response text     → make_failed_analysis()
+        - Markdown-wrapped JSON   → safe_json_parse() strips fences
+        - Partial / invalid JSON  → safe_json_parse() extracts best-effort object
+        """
         try:
             response = self.client.models.generate_content(
                 model=self.model_name,
@@ -261,9 +371,21 @@ class GeminiProvider(LLMProvider):
                     response_mime_type="application/json",
                 )
             )
-            return json.loads(response.text)
+
+            raw_text = response.text if response.text else ""
+            print(f"[GeminiProvider] raw response (first 300 chars): {raw_text[:300]}", file=sys.stderr)
+
+            parsed = safe_json_parse(raw_text)
+
+            if "error" in parsed:
+                print(f"[GeminiProvider] parse failed: {parsed['error']}", file=sys.stderr)
+                return make_failed_analysis(parsed["error"], parsed.get("raw", raw_text))
+
+            return parsed
+
         except Exception as e:
-            return {"error": str(e), "success": False}
+            print(f"[GeminiProvider] API error: {e}", file=sys.stderr)
+            return make_failed_analysis(str(e))
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +410,6 @@ class AlertAnalyzer:
         """Create the configured LLM provider (default: ollama)."""
         analysis_config = self.config.get('analysis', {})
 
-        # FIX #4: Runtime env override for LLM_PROVIDER.
         provider_name = (
             os.getenv("LLM_PROVIDER")
             or analysis_config.get('provider')
@@ -297,7 +418,6 @@ class AlertAnalyzer:
 
         if provider_name == 'ollama':
             ollama_config = analysis_config.get('ollama', {})
-            # FIX #2: Env vars take priority over config for Ollama.
             url = (
                 os.getenv("OLLAMA_URL")
                 or ollama_config.get('url')
@@ -312,7 +432,6 @@ class AlertAnalyzer:
 
         elif provider_name == 'openai':
             openai_config = analysis_config.get('openai', {})
-            # FIX #3: Use read_secret() — supports _FILE Docker secrets pattern.
             api_key = (
                 openai_config.get('api_key')
                 or read_secret("OPENAI_API_KEY")
@@ -325,7 +444,6 @@ class AlertAnalyzer:
 
         elif provider_name == 'anthropic':
             anthropic_config = analysis_config.get('anthropic', {})
-            # FIX #3: Use read_secret() — supports _FILE Docker secrets pattern.
             api_key = (
                 anthropic_config.get('api_key')
                 or read_secret("ANTHROPIC_API_KEY")
@@ -338,7 +456,6 @@ class AlertAnalyzer:
 
         elif provider_name == 'gemini':
             gemini_config = analysis_config.get('gemini', {})
-            # FIX #3: Use read_secret() — supports _FILE Docker secrets pattern.
             api_key = (
                 gemini_config.get('api_key')
                 or read_secret("GEMINI_API_KEY")
@@ -346,7 +463,7 @@ class AlertAnalyzer:
             )
             return GeminiProvider(
                 api_key=api_key,
-                model=gemini_config.get('model', 'gemini-3-flash-preview')
+                model=gemini_config.get('model', 'gemini-2.0-flash')
             )
 
         else:
@@ -365,7 +482,6 @@ class AlertAnalyzer:
         end = datetime.now()
         start = end - delta
 
-        # FIX #6 (nice-to-have): embed limit in LogQL to avoid stream-level explosion.
         if priority:
             query = f'{{source=~"syscall|k8s_audit", priority="{priority}"}} | limit {limit}'
         else:
@@ -413,10 +529,15 @@ class AlertAnalyzer:
         try:
             analysis = self.provider.analyze(SYSTEM_PROMPT, user_prompt)
         except Exception as e:
-            analysis = {
-                'error': str(e),
-                'fallback_mitre': quick_mitre
-            }
+            # Provider raised unexpectedly (should not happen since each provider
+            # catches internally, but this is a final safety net).
+            print(f"Unexpected provider error: {e}", file=sys.stderr)
+            analysis = make_failed_analysis(str(e))
+
+        # If analysis failed, enrich with any static MITRE fallback we have.
+        if analysis.get("error") and quick_mitre:
+            analysis.setdefault("mitre_attack", {}).update(quick_mitre)
+            analysis["_fallback_mitre"] = True
 
         return {
             'original_alert': alert,
@@ -462,6 +583,7 @@ class AlertAnalyzer:
             'false_positive': analysis.get('false_positive', {}),
             'summary': analysis.get('summary', ''),
             'investigate': analysis.get('investigate', []),
+            'ai_failed': bool(analysis.get('error')),
             'prometheus_correlation': {
                 'node_cpu_usage': f'rate(node_cpu_seconds_total{{instance=~"{labels.get("hostname", ".*")}:9100"}}[5m])',
                 'container_memory': f'container_memory_usage_bytes{{pod=~"{labels.get("k8s_pod_name", ".*")}"}}',
@@ -482,9 +604,12 @@ class AlertAnalyzer:
             result = self.analyze_alert(alert, dry_run)
             results.append(result)
 
-            if store and not dry_run and 'error' not in result.get('analysis', {}):
+            # Store regardless of AI failure (failed analyses are still worth keeping
+            # so the history page doesn't silently drop events).
+            if store and not dry_run:
                 if self.store_analysis(result):
-                    print(f"  ✓ Stored analysis in Loki", file=sys.stderr)
+                    status = "⚠️  AI failed, stored error record" if result['analysis'].get('error') else "✓ Stored analysis in Loki"
+                    print(f"  {status}", file=sys.stderr)
                 else:
                     print(f"  ✗ Failed to store analysis", file=sys.stderr)
 
@@ -541,12 +666,16 @@ def print_analysis(result: dict, verbose: bool = False):
 
     if 'error' in analysis:
         print(f"\n❌ Analysis Error: {analysis['error']}")
-        if 'fallback_mitre' in analysis and analysis['fallback_mitre']:
-            print(f"   Fallback MITRE: {analysis['fallback_mitre']}")
-        return
+        if analysis.get('_fallback_mitre'):
+            print(f"   Fallback MITRE: {analysis.get('mitre_attack')}")
+        if verbose and analysis.get('_raw_response'):
+            print(f"   Raw response snippet: {analysis['_raw_response']}")
+        # Still print whatever fields we have (the failed template is fully populated)
 
     print("\n" + "="*70)
     print("🔍 SECURITY ALERT ANALYSIS")
+    if analysis.get('error'):
+        print("⚠️  NOTE: AI analysis failed — fields below are defaults, not AI output")
     print("="*70)
 
     print(f"\n🎯 Attack Vector:")
@@ -560,7 +689,7 @@ def print_analysis(result: dict, verbose: bool = False):
         print(f"   Sub-technique: {mitre.get('sub_technique')}")
 
     risk = analysis.get('risk', {})
-    severity_colors = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢'}
+    severity_colors = {'Critical': '🔴', 'High': '🟠', 'Medium': '🟡', 'Low': '🟢', 'Unknown': '⚪'}
     print(f"\n⚠️  Risk Assessment:")
     print(f"   Severity: {severity_colors.get(risk.get('severity', ''), '⚪')} {risk.get('severity', 'N/A')}")
     print(f"   Confidence: {risk.get('confidence', 'N/A')}")
