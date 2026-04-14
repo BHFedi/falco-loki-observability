@@ -18,6 +18,7 @@ from typing import Optional
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from analyzer import AlertAnalyzer, load_config
+from threatintel import get_db
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -216,6 +217,34 @@ ANALYSIS_TEMPLATE = """
             margin-right: 15px;
         }
         .nav { margin-bottom: 20px; }
+        /* ── Threat Intel ────────────────────────────────────────── */
+        .ti-card {
+            background: #1f2129;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            border-left: 4px solid #8e8e8e;
+        }
+        .ti-card.ti-c2     { border-left-color: #f2495c; }
+        .ti-card.ti-high   { border-left-color: #ff9830; }
+        .ti-card.ti-medium { border-left-color: #fade2a; }
+        .ti-card.ti-info   { border-left-color: #3274d9; }
+        .ti-card.ti-clean  { border-left-color: #73bf69; }
+        .ti-badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: bold;
+            margin-right: 6px;
+        }
+        .ti-badge-critical { background: #f2495c; color: #fff; }
+        .ti-badge-high     { background: #ff9830; color: #000; }
+        .ti-badge-medium   { background: #fade2a; color: #000; }
+        .ti-badge-info     { background: #3274d9; color: #fff; }
+        .ti-badge-clean    { background: #73bf69; color: #000; }
+        .ti-ip-row { padding: 6px 0; border-bottom: 1px solid #2c3235; font-size: 0.9em; }
+        .ti-ip-row:last-child { border-bottom: none; }
     </style>
 </head>
 <body>
@@ -223,6 +252,7 @@ ANALYSIS_TEMPLATE = """
         <div class="nav">
             <a href="/" class="nav-link">← API Home</a>
             <a href="/history" class="nav-link">📜 History</a>
+            <a href="/threatintel" class="nav-link">🔍 Threat Intel</a>
         </div>
         <h1>🛡️ SIB Alert Analysis {% if cached %}<span class="cached-badge">📋 Cached</span>{% endif %}</h1>
         
@@ -375,6 +405,42 @@ ANALYSIS_TEMPLATE = """
         <div class="card">
             <p>{{ analysis.summary or 'No summary available.' }}</p>
         </div>
+
+        {% if threat_intel %}
+        <h2>🔍 Threat Intelligence</h2>
+        {% set ti = threat_intel %}
+        {% set ti_sev = (ti.highest_severity or 'clean')|lower %}
+        {% set ti_class = 'ti-c2' if ti.has_c2 else ('ti-' + ti_sev) %}
+        <div class="ti-card {{ ti_class }}">
+            <div class="section" style="margin-bottom:10px;">
+                <span class="ti-badge ti-badge-{{ ti_sev }}">{{ ti.highest_severity or 'CLEAN' }}</span>
+                {% if ti.has_c2 %}<span class="ti-badge ti-badge-critical">⚠ C2 CONFIRMED</span>{% endif %}
+                {% if ti.is_tor %}<span class="ti-badge ti-badge-info">TOR EXIT NODE</span>{% endif %}
+                <span style="color:#8e8e8e;font-size:0.85em;margin-left:8px;">
+                    {{ ti.checked_ips|length }} IP(s) checked,
+                    {{ ti.malicious_ips|length }} malicious
+                </span>
+            </div>
+            {% if ti.malicious_ips %}
+            <div style="margin-top:10px;">
+                {% for ip, r in ti.results.items() if r.is_malicious %}
+                <div class="ti-ip-row">
+                    <strong style="font-family:monospace;">{{ ip }}</strong>
+                    {% for m in r.matches %}
+                    <span class="ti-badge ti-badge-{{ m.severity|lower }}">{{ m.display_name }}</span>
+                    {% endfor %}
+                    {% if r.in_spamhaus_cidr %}
+                    <span class="ti-badge ti-badge-high">Spamhaus DROP ({{ r.in_spamhaus_cidr }})</span>
+                    {% endif %}
+                    <br><span style="color:#8e8e8e;font-size:0.82em;">{{ r.summary }}</span>
+                </div>
+                {% endfor %}
+            </div>
+            {% else %}
+            <p style="color:#73bf69;margin-top:8px;">✓ No IPs found in threat intelligence feeds.</p>
+            {% endif %}
+        </div>
+        {% endif %}
         
         {% if show_mapping and obfuscation_mapping %}
         <h2>🔐 Obfuscation Mapping</h2>
@@ -478,6 +544,7 @@ def save_to_cache(cache_key: str, result: dict, original_output: str, rule: str,
         'analysis': result.get('analysis', {}),
         'obfuscated_output': result.get('obfuscated_alert', {}).get('output', '') if isinstance(result.get('obfuscated_alert'), dict) else '',
         'obfuscation_mapping': result.get('obfuscation_mapping', {}),
+        'threat_intel': result.get('threat_intel', {}),
         'ai_failed': bool(result.get('analysis', {}).get('error')),
         'dedup_count': 1,
         'last_seen': datetime.now().isoformat(),
@@ -525,11 +592,9 @@ def _render_analysis(
     timestamp: str,
     cached: bool,
     error: Optional[str] = None,
+    threat_intel: Optional[dict] = None,
 ):
-    """Central helper that renders ANALYSIS_TEMPLATE with all required variables.
-
-    Handles the ai_failed flag so every call site doesn't repeat the same logic.
-    """
+    """Central helper that renders ANALYSIS_TEMPLATE with all required variables."""
     ai_failed = bool(analysis.get('error'))
     ai_error = analysis.get('error', '') if ai_failed else ''
 
@@ -550,6 +615,7 @@ def _render_analysis(
         cached=cached,
         ai_failed=ai_failed,
         ai_error=ai_error,
+        threat_intel=threat_intel,
     )
 
 
@@ -658,6 +724,7 @@ def analyze_api():
             'success': True,
             'analysis': analysis,
             'obfuscation_mapping': result.get('obfuscation_mapping', {}),
+            'threat_intel': result.get('threat_intel', {}),
             'ai_failed': bool(analysis.get('error')),
         }
         if analysis.get('error'):
@@ -716,6 +783,7 @@ def analyze_page():
                 show_mapping=show_mapping,
                 timestamp=cached_result.get('timestamp', 'cached'),
                 cached=True,
+                threat_intel=cached_result.get('threat_intel'),
             )
         
         # Build alert object
@@ -755,6 +823,7 @@ def analyze_page():
             show_mapping=show_mapping,
             timestamp=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             cached=False,
+            threat_intel=result.get('threat_intel'),
         )
         
     except Exception as e:
@@ -840,6 +909,7 @@ def history_detail(cache_key: str):
         show_mapping=False,
         timestamp=cached.get('timestamp', 'cached'),
         cached=True,
+        threat_intel=cached.get('threat_intel'),
     )
 
 
@@ -883,6 +953,7 @@ def index():
                 <div class="stat-label">Cached Analyses</div>
             </div>
             <a href="/history" style="background: #3274d9; color: white; padding: 15px 25px; border-radius: 8px; text-decoration: none; display: inline-block; vertical-align: top; margin-top: 5px;">📜 View History</a>
+            <a href="/threatintel" style="background: #1f2129; color: #ff9830; padding: 15px 25px; border-radius: 8px; text-decoration: none; display: inline-block; vertical-align: top; margin-top: 5px; margin-left: 10px; border: 1px solid #ff9830;">🔍 Threat Intel</a>
             <a href="/api/health/all" style="background: #1f2129; color: #73bf69; padding: 15px 25px; border-radius: 8px; text-decoration: none; display: inline-block; vertical-align: top; margin-top: 5px; margin-left: 10px; border: 1px solid #73bf69;">💚 Health Check</a>
         </div>
         
@@ -914,10 +985,237 @@ def index():
         
         <h3>GET /api/health/all <span class="badge">JSON API</span></h3>
         <p>Aggregate health check: falcosidekick, loki, prometheus, grafana, and this service.</p>
+
+        <h2>Threat Intelligence</h2>
+
+        <h3>GET /threatintel <span class="badge">Web UI</span></h3>
+        <p>Interactive IP reputation lookup — search IPs against all loaded blocklist feeds.</p>
+
+        <h3>GET /api/threatintel/lookup?ip=X <span class="badge">JSON API</span></h3>
+        <p>JSON IP lookup. Repeatable: <code>?ip=1.2.3.4&amp;ip=5.6.7.8</code></p>
+
+        <h3>GET /api/threatintel/stats <span class="badge">JSON API</span></h3>
+        <p>Feed counts and last-updated timestamps.</p>
+
+        <h3>POST /api/threatintel/reload <span class="badge">JSON API</span></h3>
+        <p>Hot-reload feeds after running <code>update-feeds.sh</code> — no restart needed.</p>
         
         <h2>Grafana Integration</h2>
         <p>Add a data link to your Loki log panels with this URL template:</p>
         <pre>http://localhost:5000/analyze?output=${{__value.raw}}&amp;rule=${{__data.fields.rule}}&amp;priority=${{__data.fields.priority}}&amp;hostname=${{__data.fields.hostname}}</pre>
+    </body>
+    </html>
+    """
+
+
+@app.route('/api/threatintel/lookup', methods=['GET'])
+def threatintel_lookup():
+    """
+    JSON IP lookup against threat intel feeds.
+
+    Query params:
+        ip  — one or more IPs (repeatable: ?ip=1.2.3.4&ip=5.6.7.8)
+
+    Returns:
+        {
+            "ips_checked": [...],
+            "malicious_ips": [...],
+            "has_threats": true/false,
+            "has_c2": true/false,
+            "highest_severity": "CRITICAL|...",
+            "results": { "1.2.3.4": { ...ThreatIntelResult... } }
+        }
+    """
+    ips = request.args.getlist('ip')
+    if not ips:
+        return jsonify({'error': 'Provide at least one ?ip= parameter'}), 400
+
+    db = get_db()
+    results = {}
+    malicious = []
+    has_c2 = False
+
+    for ip in ips:
+        r = db.lookup(ip.strip())
+        results[ip] = r.to_dict()
+        if r.is_malicious:
+            malicious.append(ip)
+        if r.is_c2:
+            has_c2 = True
+
+    severity_rank = {'CLEAN': 0, 'INFO': 1, 'MEDIUM': 2, 'HIGH': 3, 'CRITICAL': 4}
+    highest = max(
+        (r['highest_severity'] for r in results.values()),
+        key=lambda s: severity_rank.get(s, 0),
+        default='CLEAN',
+    )
+
+    return jsonify({
+        'ips_checked': ips,
+        'malicious_ips': malicious,
+        'has_threats': bool(malicious),
+        'has_c2': has_c2,
+        'highest_severity': highest,
+        'results': results,
+    })
+
+
+@app.route('/api/threatintel/stats', methods=['GET'])
+def threatintel_stats():
+    """Return feed load stats (counts, timestamps) — useful for health checks."""
+    return jsonify(get_db().stats())
+
+
+@app.route('/api/threatintel/reload', methods=['POST'])
+def threatintel_reload():
+    """
+    Hot-reload threat intel feeds from disk without restarting gunicorn.
+    Call this after running /app/threatintel/update-feeds.sh.
+    """
+    db = get_db()
+    db.reload()
+    logger.info("Threat intel feeds reloaded via API")
+    return jsonify({'status': 'reloaded', 'stats': db.stats()})
+
+
+@app.route('/threatintel', methods=['GET'])
+def threatintel_page():
+    """Interactive threat intel IP lookup web page."""
+    ip_query = request.args.get('ip', '').strip()
+    db = get_db()
+    stats = db.stats()
+
+    result_html = ''
+    if ip_query:
+        ips = [i.strip() for i in ip_query.replace(',', ' ').split() if i.strip()]
+        lookup_results = {ip: db.lookup(ip) for ip in ips}
+        malicious = [ip for ip, r in lookup_results.items() if r.is_malicious]
+
+        rows = ''
+        sev_color = {'CRITICAL': '#f2495c', 'HIGH': '#ff9830', 'MEDIUM': '#fade2a', 'INFO': '#3274d9', 'CLEAN': '#73bf69'}
+        for ip, r in lookup_results.items():
+            if r.is_malicious:
+                verdict = f'<span style="color:#f2495c;font-weight:bold">🚨 MALICIOUS</span>'
+                feed_badges = ' '.join(
+                    f'<span style="background:{sev_color.get(m.severity,"#8e8e8e")};color:{"#fff" if m.severity in ("CRITICAL","INFO") else "#000"};'
+                    f'padding:2px 8px;border-radius:3px;font-size:0.8em;margin-right:4px;">{escape(m.display_name)}</span>'
+                    for m in r.matches
+                )
+                if r.in_spamhaus_cidr:
+                    feed_badges += f' <span style="background:#ff9830;color:#000;padding:2px 8px;border-radius:3px;font-size:0.8em;">Spamhaus DROP ({escape(r.in_spamhaus_cidr)})</span>'
+            else:
+                verdict = '<span style="color:#73bf69;font-weight:bold">✓ CLEAN</span>'
+                feed_badges = '<span style="color:#8e8e8e">—</span>'
+            rows += f"""
+            <tr>
+                <td style="font-family:monospace;padding:10px">{escape(ip)}</td>
+                <td style="padding:10px">{verdict}</td>
+                <td style="padding:10px">{feed_badges}</td>
+                <td style="padding:10px;font-size:0.82em;color:#b0b0b0">{escape(r.summary)}</td>
+            </tr>"""
+
+        alert_banner = ''
+        if malicious:
+            c2_ips = [ip for ip, r in lookup_results.items() if r.is_c2]
+            alert_banner = f'<div style="margin-top:15px;padding:15px;background:#f2495c22;border:1px solid #f2495c;border-radius:8px;color:#f2495c"><strong>🚨 {len(malicious)} malicious IP(s) detected: {", ".join(malicious)}</strong>'
+            if c2_ips:
+                alert_banner += f'<br><strong>⚠ Confirmed C2 servers: {", ".join(c2_ips)} — isolate affected hosts immediately</strong>'
+            alert_banner += '</div>'
+
+        result_html = f"""
+        <div style="margin-top:25px">
+            <h2 style="color:#73bf69;margin-bottom:12px">Results</h2>
+            <table style="width:100%;border-collapse:collapse;background:#1f2129;border-radius:8px;overflow:hidden">
+                <tr style="background:#2a2d35">
+                    <th style="padding:10px;text-align:left;color:#73bf69">IP</th>
+                    <th style="padding:10px;text-align:left;color:#73bf69">Verdict</th>
+                    <th style="padding:10px;text-align:left;color:#73bf69">Feeds</th>
+                    <th style="padding:10px;text-align:left;color:#73bf69">Summary</th>
+                </tr>
+                {rows}
+            </table>
+            {alert_banner}
+        </div>"""
+
+    # Feed stats table
+    feed_rows = ''
+    for stem, info in stats.get('feeds_loaded', {}).items():
+        updated = info.get('updated') or 'never'
+        if updated and updated != 'never':
+            try:
+                from datetime import datetime as _dt
+                age_h = int((_dt.now() - _dt.fromisoformat(updated)).total_seconds() / 3600)
+                age_str = f'{age_h}h ago'
+                stale_color = '#f2495c' if age_h > 25 else '#73bf69'
+            except Exception:
+                age_str = updated[:16]
+                stale_color = '#8e8e8e'
+        else:
+            age_str = 'never'; stale_color = '#f2495c'
+        note = f' <span style="color:#8e8e8e;font-size:0.8em">{escape(info.get("note",""))}</span>' if info.get('note') else ''
+        feed_rows += f"""
+        <tr>
+            <td style="padding:10px">{escape(stem)}{note}</td>
+            <td style="padding:10px;text-align:right;font-family:monospace">{info.get('count',0):,}</td>
+            <td style="padding:10px;color:{stale_color};font-size:0.85em">{escape(age_str)}</td>
+        </tr>"""
+
+    return f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Threat Intelligence — SIB</title>
+        <style>
+            body {{ font-family: -apple-system, sans-serif; background: #111217; color: #d8d9da; padding: 40px; }}
+            h1 {{ color: #ff9830; }} h2 {{ color: #73bf69; margin-top: 30px; }}
+            input[type=text] {{ background:#1f2129; border:1px solid #2c3235; color:#d8d9da;
+                               padding:10px 15px; border-radius:4px; width:420px; font-size:1em; }}
+            button {{ background:#3274d9; color:white; border:none; padding:10px 20px;
+                     border-radius:4px; font-size:1em; cursor:pointer; margin-left:8px; }}
+            button:hover {{ background:#4385ea; }}
+            table {{ width:100%; border-collapse:collapse; margin-top:10px; }}
+            th {{ background:#1f2129; color:#73bf69; padding:10px; text-align:left; }}
+            td {{ border-bottom:1px solid #2c3235; }}
+            a {{ color:#3274d9; text-decoration:none; }}
+            .stat {{ display:inline-block;background:#1f2129;padding:12px 20px;border-radius:8px;
+                    margin-right:12px;margin-bottom:15px; }}
+            .stat-value {{ font-size:1.5em;color:#73bf69; }}
+            .stat-label {{ color:#8e8e8e;font-size:0.85em; }}
+            code {{ background:#2a2d35;padding:2px 8px;border-radius:4px; }}
+        </style>
+    </head>
+    <body>
+        <div style="margin-bottom:20px"><a href="/">← Back to API</a></div>
+        <h1>🔍 Threat Intelligence</h1>
+
+        <div style="margin:20px 0">
+            <div class="stat"><div class="stat-value">{stats.get('total_ips',0):,}</div><div class="stat-label">Total IPs</div></div>
+            <div class="stat"><div class="stat-value">{stats.get('spamhaus_cidrs',0)}</div><div class="stat-label">Spamhaus CIDRs</div></div>
+            <div class="stat"><div class="stat-value">{len(stats.get('feeds_loaded',{}))}</div><div class="stat-label">Feeds</div></div>
+        </div>
+
+        <form method="GET" action="/threatintel" style="margin:20px 0">
+            <input type="text" name="ip" value="{escape(ip_query)}"
+                   placeholder="IP(s) — comma or space separated, e.g. 185.220.101.1" />
+            <button type="submit">🔍 Lookup</button>
+        </form>
+
+        {result_html}
+
+        <h2>📡 Feed Status</h2>
+        <table>
+            <tr><th>Feed</th><th style="text-align:right">IPs / CIDRs</th><th>Last Updated</th></tr>
+            {feed_rows}
+        </table>
+
+        <div style="margin-top:30px;padding:15px;background:#1f2129;border-radius:8px;font-size:0.85em;color:#8e8e8e">
+            <strong style="color:#73bf69">API</strong> &nbsp;
+            <code>GET /api/threatintel/lookup?ip=1.2.3.4</code> &nbsp;·&nbsp;
+            <code>GET /api/threatintel/stats</code> &nbsp;·&nbsp;
+            <code>POST /api/threatintel/reload</code><br><br>
+            Update feeds: <code>docker exec analyser /app/threatintel/update-feeds.sh</code><br>
+            Hot-reload:   <code>curl -sX POST http://localhost:5000/api/threatintel/reload</code>
+        </div>
     </body>
     </html>
     """

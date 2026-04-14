@@ -21,6 +21,7 @@ import yaml
 
 from obfuscator import obfuscate_alert, ObfuscationLevel
 from prompts import SYSTEM_PROMPT, USER_PROMPT_TEMPLATE, MITRE_MAPPING
+from threatintel import enrich_alert_with_threatintel
 
 
 # ---------------------------------------------------------------------------
@@ -490,12 +491,19 @@ class AlertAnalyzer:
         return self.log_client.query_range(query, start, end, limit)
 
     def analyze_alert(self, alert: dict, dry_run: bool = False) -> dict:
-        """Analyze a single Falco alert."""
+        """Analyze a single Falco alert, enriched with threat intelligence."""
+        # ── 1. Obfuscate the alert for LLM privacy ──────────────────────────
         obfuscated, mapping = obfuscate_alert(alert, self.obfuscation_level)
+
+        # ── 2. Threat intel enrichment on the RAW alert (before obfuscation)
+        #       so we get the real IPs, not [IP-EXTERNAL-1] tokens.
+        ti = enrich_alert_with_threatintel(alert)
+        ti_data = ti["threat_intel"]
 
         labels = alert.get('_labels', {})
         output_fields = obfuscated.get('output_fields', {})
 
+        # ── 3. Build the LLM prompt ──────────────────────────────────────────
         user_prompt = USER_PROMPT_TEMPLATE.format(
             rule_name=labels.get('rule', alert.get('rule', 'Unknown')),
             priority=labels.get('priority', alert.get('priority', 'Unknown')),
@@ -516,21 +524,25 @@ class AlertAnalyzer:
             terminal=output_fields.get('proc.tty', 'N/A'),
         )
 
+        # Append threat intel context so the LLM knows about confirmed C2 hits
+        user_prompt += f"\n\n**{ti_data['context_for_llm']}**"
+
         if dry_run:
             return {
                 'obfuscated_prompt': user_prompt,
                 'obfuscation_mapping': mapping,
+                'threat_intel': ti_data,
                 'note': 'Dry run - no LLM call made'
             }
 
+        # ── 4. Bump severity hint when C2 is confirmed ──────────────────────
         rule_name = labels.get('rule', alert.get('rule', ''))
         quick_mitre = MITRE_MAPPING.get(rule_name, None)
 
+        # ── 5. Call LLM ──────────────────────────────────────────────────────
         try:
             analysis = self.provider.analyze(SYSTEM_PROMPT, user_prompt)
         except Exception as e:
-            # Provider raised unexpectedly (should not happen since each provider
-            # catches internally, but this is a final safety net).
             print(f"Unexpected provider error: {e}", file=sys.stderr)
             analysis = make_failed_analysis(str(e))
 
@@ -539,10 +551,21 @@ class AlertAnalyzer:
             analysis.setdefault("mitre_attack", {}).update(quick_mitre)
             analysis["_fallback_mitre"] = True
 
+        # ── 6. Escalate severity when threat intel confirms C2 ───────────────
+        if ti_data["has_c2"] and not analysis.get("error"):
+            risk = analysis.setdefault("risk", {})
+            current = risk.get("severity", "Medium")
+            # Only escalate, never downgrade
+            rank = {"Low": 0, "Medium": 1, "High": 2, "Critical": 3}
+            if rank.get(current, 0) < rank["Critical"]:
+                risk["severity"] = "Critical"
+                risk["_ti_escalated"] = True
+
         return {
             'original_alert': alert,
             'obfuscated_alert': obfuscated,
             'obfuscation_mapping': mapping,
+            'threat_intel': ti_data,
             'analysis': analysis
         }
 
@@ -551,6 +574,7 @@ class AlertAnalyzer:
         analysis = result.get('analysis', {})
         original = result.get('original_alert', {})
         labels = original.get('_labels', {})
+        ti = result.get('threat_intel', {})
 
         mitre = analysis.get('mitre_attack', {})
         risk = analysis.get('risk', {})
@@ -566,6 +590,10 @@ class AlertAnalyzer:
             'mitre_tactic': mitre.get('tactic', 'unknown').replace(' ', '_'),
             'mitre_technique': mitre.get('technique_id', 'unknown'),
             'false_positive_likelihood': str(fp.get('likelihood', 'unknown')).lower(),
+            # Threat intel labels — filterable in Grafana
+            'ti_has_threats': str(ti.get('has_threats', False)).lower(),
+            'ti_has_c2': str(ti.get('has_c2', False)).lower(),
+            'ti_severity': ti.get('highest_severity', 'CLEAN').lower(),
         }
 
         enriched_entry = {
@@ -584,6 +612,13 @@ class AlertAnalyzer:
             'summary': analysis.get('summary', ''),
             'investigate': analysis.get('investigate', []),
             'ai_failed': bool(analysis.get('error')),
+            'threat_intel': {
+                'checked_ips': ti.get('checked_ips', []),
+                'malicious_ips': ti.get('malicious_ips', []),
+                'has_threats': ti.get('has_threats', False),
+                'has_c2': ti.get('has_c2', False),
+                'highest_severity': ti.get('highest_severity', 'CLEAN'),
+            },
             'prometheus_correlation': {
                 'node_cpu_usage': f'rate(node_cpu_seconds_total{{instance=~"{labels.get("hostname", ".*")}:9100"}}[5m])',
                 'container_memory': f'container_memory_usage_bytes{{pod=~"{labels.get("k8s_pod_name", ".*")}"}}',
