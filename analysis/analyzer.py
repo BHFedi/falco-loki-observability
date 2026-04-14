@@ -493,11 +493,16 @@ class AlertAnalyzer:
     def analyze_alert(self, alert: dict, dry_run: bool = False) -> dict:
         """Analyze a single Falco alert, enriched with threat intelligence."""
         # ── 1. Obfuscate the alert for LLM privacy ──────────────────────────
+        #       Must happen FIRST so we have the ip→token mapping before
+        #       building the threat intel LLM context.
         obfuscated, mapping = obfuscate_alert(alert, self.obfuscation_level)
 
-        # ── 2. Threat intel enrichment on the RAW alert (before obfuscation)
-        #       so we get the real IPs, not [IP-EXTERNAL-1] tokens.
-        ti = enrich_alert_with_threatintel(alert)
+        # ── 2. Threat intel enrichment on the RAW alert ──────────────────────
+        #       extract_ips_from_alert() reads the original alert so real IPs
+        #       are looked up even under STANDARD/PARANOID obfuscation levels.
+        #       We pass `mapping` so context_for_llm uses tokens ([IP-EXTERNAL-1])
+        #       instead of real IPs — the LLM never sees raw addresses.
+        ti = enrich_alert_with_threatintel(alert, obfuscation_map=mapping)
         ti_data = ti["threat_intel"]
 
         labels = alert.get('_labels', {})

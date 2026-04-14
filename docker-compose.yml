@@ -29,9 +29,8 @@ services:
       # Provider selection — overrides config.yaml at runtime
       - LLM_PROVIDER=gemini
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
-      # FIX #5: Use _FILE pattern so read_secret() picks up the Docker secret.
-      # Do NOT set GEMINI_API_KEY directly here; the secret file is the source of truth.
       - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
+      - THREATFOX_API_KEY_FILE=/run/secrets/threatfox_api_key
       # Storage
       - STACK=loki
       - LOKI_URL=http://loki:3100
