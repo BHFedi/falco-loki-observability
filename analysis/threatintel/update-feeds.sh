@@ -363,6 +363,43 @@ YAML
 }
 
 # =============================================================================
+# Notify remote rules-sync service that new rules are available
+# =============================================================================
+
+notify_rules_sync() {
+    # Read API key from _FILE if present
+    if [[ -n "${RULES_SYNC_API_KEY_FILE}" ]] && [[ -f "${RULES_SYNC_API_KEY_FILE}" ]]; then
+        RULES_SYNC_API_KEY=$(cat "${RULES_SYNC_API_KEY_FILE}" | tr -d '\n')
+    fi
+
+    local webhook_url="${RULES_SYNC_WEBHOOK_URL:-}"
+    local api_key="${RULES_SYNC_API_KEY:-}"
+    if [[ -z "${webhook_url}" ]]; then
+        log "No RULES_SYNC_WEBHOOK_URL set – skipping push notification"
+        return 0
+    fi
+
+    log "Notifying rules-sync service at ${webhook_url}"
+    local http_code
+    if [[ -n "${api_key}" ]]; then
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${webhook_url}" \
+            -H "X-API-Key: ${api_key}" \
+            --max-time 10)
+    else
+        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${webhook_url}" \
+            --max-time 10)
+    fi
+
+    if [[ "${http_code}" -eq 200 ]] || [[ "${http_code}" -eq 204 ]]; then
+        ok "Rules-sync notified successfully"
+    else
+        warn "Rules-sync notification failed (HTTP ${http_code})"
+    fi
+}
+
+# =============================================================================
 # Summary
 # =============================================================================
 print_summary() {
@@ -401,6 +438,7 @@ main() {
 
     combine_feeds
     generate_falco_rules
+    notify_rules_sync
     print_summary
 
     [[ "${failed}" -gt 0 ]] && { warn "${failed} feed(s) failed or were skipped"; }

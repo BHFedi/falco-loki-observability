@@ -681,6 +681,36 @@ def health_all():
         'checked_at': datetime.now().isoformat(),
     })
 
+# -------------------- Rule Serving for Remote Falco --------------------
+@app.route('/api/rules/falco', methods=['GET'])
+def serve_falco_rules():
+    """Serve Falco rules file. Supports _FILE secrets for API key."""
+    # Read API key from env or _FILE
+    rules_api_key = None
+    if os.environ.get('RULES_API_KEY_FILE'):
+        try:
+            with open(os.environ['RULES_API_KEY_FILE'], 'r') as f:
+                rules_api_key = f.read().strip()
+        except Exception as e:
+            logger.error(f"Failed to read RULES_API_KEY_FILE: {e}")
+    else:
+        rules_api_key = os.environ.get('RULES_API_KEY')
+    
+    if rules_api_key:
+        provided_key = request.headers.get('X-API-Key')
+        if not provided_key or provided_key != rules_api_key:
+            return jsonify({'error': 'Unauthorized'}), 401
+
+    rules_file = Path('/app/threatintel/rules.d/falco_threatintel_rules.yaml')
+    if not rules_file.exists():
+        return jsonify({'error': 'Rules file not found'}), 404
+
+    try:
+        content = rules_file.read_text(encoding='utf-8')
+        return content, 200, {'Content-Type': 'text/yaml; charset=utf-8'}
+    except Exception as e:
+        logger.error(f"Failed to read rules file: {e}")
+        return jsonify({'error': 'Internal server error'}), 500
 
 @app.route('/api/analyze', methods=['POST'])
 def analyze_api():

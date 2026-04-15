@@ -32,6 +32,10 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
       - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
       - THREATFOX_API_KEY_FILE=/run/secrets/threatfox_api_key
+      # the webhook falco rule updater
+      - RULES_API_KEY_FILE=/run/secrets/rules_api_key
+      - RULES_SYNC_API_KEY_FILE=/run/secrets/rules_sync_api_key
+      - RULES_SYNC_WEBHOOK_URL=http://192.168.55.194:5002/webhook
       # Storage
       - STACK=loki
       - LOKI_URL=http://loki:3100
@@ -39,6 +43,8 @@ services:
       - RULES_DIR=/app/threatintel/rules.d
     secrets:
       - gemini_api_key
+      - rules_api_key
+      - rules_sync_api_key
     depends_on:
       - loki
     healthcheck:
@@ -137,14 +143,6 @@ services:
     networks:
       - mon-healio
 
-# ---------------------------------------------------------------------------
-# FIX #5: Declare Docker secrets (values sourced from files on the host).
-# Create them first:
-#   echo "your-gemini-key" | docker secret create gemini_api_key -
-#   echo "your-grafana-pass" | docker secret create grafana_admin_password -
-# Or for Compose file-based secrets, place the key in a local file and
-# reference it with `file:` below.
-# ---------------------------------------------------------------------------
 secrets:
   gemini_api_key:
     # Option A — Docker Swarm managed secret (recommended for production):
@@ -153,6 +151,10 @@ secrets:
     file: ./secrets/gemini_api_key.txt
   grafana_admin_password:
     file: ./secrets/grafana_admin_password.txt
+  rules_api_key:
+    file: ./secrets/rules_api_key.txt
+  rules_sync_api_key:
+    file: ./secrets/rules_sync_api_key.txt
 
 volumes:
   alloy-data:
