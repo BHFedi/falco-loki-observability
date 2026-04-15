@@ -25,6 +25,7 @@ services:
     volumes:
       - ./analysis/config.yaml:/app/config.yaml:ro
       - analysis-cache:/app/cache
+      - ./analysis/threatintel/rules.d:/app/threatintel/rules.d:rw
     environment:
       # Provider selection — overrides config.yaml at runtime
       - LLM_PROVIDER=gemini
@@ -35,6 +36,7 @@ services:
       - STACK=loki
       - LOKI_URL=http://loki:3100
       - OBFUSCATION_LEVEL=standard
+      - RULES_DIR=/app/threatintel/rules.d
     secrets:
       - gemini_api_key
     depends_on:

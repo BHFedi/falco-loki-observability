@@ -240,8 +240,13 @@ combine_feeds() {
 # Generate Falco threat intel rules
 # =============================================================================
 generate_falco_rules() {
-    local rules_out="${SCRIPT_DIR}/falco_threatintel_rules.yaml"
+
+    local RULES_DIR="${SCRIPT_DIR}/rules.d"
+    local rules_out="${RULES_DIR}/falco_threatintel_rules.yaml"
+
     log "Generating Falco rules → ${rules_out}"
+
+    mkdir -p "${RULES_DIR}"   # safety
 
     local combined_count=0
     [[ -f "${COMBINED}" ]] && combined_count=$(wc -l < "${COMBINED}" | tr -d ' ')

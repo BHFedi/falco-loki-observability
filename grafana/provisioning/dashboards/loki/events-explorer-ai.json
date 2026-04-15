@@ -1,7 +1,5 @@
 {
-  "annotations": {
-    "list": []
-  },
+  "annotations": { "list": [] },
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 0,
@@ -9,34 +7,21 @@
   "liveNow": true,
   "panels": [
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 6,
-        "w": 24,
-        "x": 0,
-        "y": 0
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 5, "w": 24, "x": 0, "y": 0 },
       "id": 1,
       "options": {
-        "content": "### Falco Events Explorer (AI-Enabled)\n\n**Quick Links**\n- [AI Analysis History](http://192.168.55.193:5000/history)\n- [Analyze Single Event](http://192.168.55.193:5000/analyze)\n\n**LogQL Tips**\n| Query | Description |\n|-------|-------------|\n| `{source=~\"syscall|k8s_audit\", priority=\"Warning\"}` | Filter by priority |\n| `{rule=~\".*shell.*\"}` | Shell-related rules |\n| `{hostname=~\"$hostname\"}` | Specific hosts |\n\nClick any log line or table row \u2192 **\ud83e\udd16 Analyze with AI** (powered by your analyzer at 192.168.55.193:5000).",
+        "content": "### 🛡️ Falco AI-Powered Security Dashboard (Refined Layout)\n\n**Quick Links**\n- [AI Analysis History](http://192.168.55.193:5000/history) — Browse all previous AI analyses\n- [Single Event Analyzer](http://192.168.55.193:5000/analyze)\n- [Threat Intel Lookup](http://192.168.55.193:5000/threatintel)\n\n**How to use**\n- Use **hostname** and **priority** variables at the top to filter.\n- Click any log line or table cell → **🤖 Analyze with AI** (opens the analyser service).\n- The **High & Critical** panel always shows severe events (ignores priority filter).\n- The new **AI Insights** row shows rich LLM analysis (attack vector, risk, mitigations, summary, threat intel).",
         "mode": "markdown"
       },
-      "title": "Dashboard Help & Quick Links",
+      "title": "Dashboard Overview & Quick Links",
       "type": "text"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
       "fieldConfig": {
         "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
+          "color": { "mode": "palette-classic" },
           "custom": {
             "axisBorderShow": false,
             "barAlignment": 0,
@@ -44,723 +29,175 @@
             "fillOpacity": 80,
             "gradientMode": "none",
             "lineWidth": 1,
-            "stacking": {
-              "mode": "normal"
-            }
+            "stacking": { "mode": "normal" }
           },
           "unit": "short"
         },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Critical"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "dark-red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Error"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "red",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Warning"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "orange",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Notice"
-            },
-            "properties": [
-              {
-                "id": "color",
-                "value": {
-                  "fixedColor": "yellow",
-                  "mode": "fixed"
-                }
-              }
-            ]
-          }
+          { "matcher": { "id": "byName", "options": "Critical" }, "properties": [{ "id": "color", "value": { "fixedColor": "dark-red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Error" }, "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Warning" }, "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }] },
+          { "matcher": { "id": "byName", "options": "Notice" }, "properties": [{ "id": "color", "value": { "fixedColor": "yellow", "mode": "fixed" } }] }
         ]
       },
-      "gridPos": {
-        "h": 8,
-        "w": 24,
-        "x": 0,
-        "y": 6
-      },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 5 },
       "id": 2,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "sum by (priority) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"} [$__interval]))",
-          "legendFormat": "{{priority}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Event Volume by Priority",
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (priority) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"} [$__interval]))", "legendFormat": "{{priority}}", "refId": "A" }],
+      "title": "📈 Event Volume by Priority (Trend)",
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisBorderShow": false,
-            "barAlignment": 0,
-            "drawStyle": "bars",
-            "fillOpacity": 70,
-            "stacking": {
-              "mode": "normal"
-            }
-          }
-        }
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 0,
-        "y": 14
-      },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 13 },
+      "id": 40,
+      "title": "🔍 Detection Overview",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "axisBorderShow": false, "barAlignment": 0, "drawStyle": "bars", "fillOpacity": 70, "stacking": { "mode": "normal" } } } },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 14 },
       "id": 5,
-      "options": {
-        "legend": {
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "multi",
-          "sort": "desc"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "sum by (rule) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"} [5m]))",
-          "legendFormat": "{{rule}}",
-          "refId": "A"
-        }
-      ],
-      "title": "\ud83d\udd25 Top Attack Patterns (by rule, last 5m)",
-      "description": "Rule spikes may indicate coordinated activity. Filter with variables above.",
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true }, "tooltip": { "mode": "multi", "sort": "desc" } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by (rule) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"} [5m]))", "legendFormat": "{{rule}}", "refId": "A" }],
+      "title": "🔥 Top Attack Patterns (by rule, last 5m)",
       "type": "timeseries"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 30
-              },
-              {
-                "color": "red",
-                "value": 100
-              }
-            ]
-          }
-        }
-      },
-      "gridPos": {
-        "h": 9,
-        "w": 12,
-        "x": 12,
-        "y": 14
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 30 }, { "color": "red", "value": 100 }] } } },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 14 },
       "id": 6,
-      "options": {
-        "displayMode": "gradient",
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "showUnfilled": true
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "topk(10, sum by (hostname) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} [5m])))",
-          "legendFormat": "{{hostname}}",
-          "refId": "A",
-          "instant": true
-        }
-      ],
-      "title": "\ud83d\udd0a Top Talkers (hosts, last 5m)",
-      "description": "Hosts generating the most Falco events. Watch for outliers.",
+      "options": { "displayMode": "gradient", "orientation": "horizontal", "reduceOptions": { "calcs": ["lastNotNull"] }, "showUnfilled": true },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "topk(10, sum by (hostname) (count_over_time({source=~\"syscall|k8s_audit\", hostname=~\"$hostname\"} [5m])))", "legendFormat": "{{hostname}}", "refId": "A", "instant": true }],
+      "title": "🔊 Top Talkers (hosts, last 5m)",
       "type": "bargauge"
     },
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 23
-      },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 23 },
       "id": 10,
-      "title": "High Severity Events (Direct AI Analysis)",
+      "title": "🚨 High Severity Events",
       "type": "row"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 24
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 11, "w": 24, "x": 0, "y": 24 },
       "id": 7,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "showCommonLabels": true,
-        "showLabels": true,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "fieldConfig": {
-        "defaults": {
-          "custom": {},
-          "links": [
-            {
-              "title": "\ud83e\udd16 Analyze with AI",
-              "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
-              "targetBlank": true
-            }
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"Critical|Error|Warning\"}",
-          "refId": "A"
-        }
-      ],
-      "title": "\ud83d\udea8 High/Critical Security Events (with AI link)",
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": true, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"Critical|Error|Warning\"}", "refId": "A" }],
+      "title": "🚨 High & Critical Events (AI link) — Always shows severe events",
       "type": "logs"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 14,
-        "w": 24,
-        "x": 0,
-        "y": 36
-      },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 35 },
+      "id": 11,
+      "title": "📋 All Events & Selection",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 12, "w": 24, "x": 0, "y": 36 },
       "id": 3,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "showCommonLabels": false,
-        "showLabels": true,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "fieldConfig": {
-        "defaults": {
-          "links": [
-            {
-              "title": "\ud83e\udd16 Analyze with AI",
-              "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
-              "targetBlank": true
-            }
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}",
-          "refId": "A"
-        }
-      ],
-      "title": "All Security Events",
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}", "refId": "A" }],
+      "title": "All Security Events (filtered by priority variable)",
       "type": "logs"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 12,
-        "w": 24,
-        "x": 0,
-        "y": 50
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 48 },
       "id": 4,
-      "title": "\ud83d\udccb Select Event for AI Analysis",
+      "title": "📋 Select Event for Quick AI Analysis",
       "type": "table",
       "fieldConfig": {
-        "defaults": {
-          "custom": {
-            "align": "auto",
-            "cellOptions": {
-              "type": "auto"
-            }
-          }
-        },
+        "defaults": { "custom": { "align": "auto", "cellOptions": { "type": "auto" } } },
         "overrides": [
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Time"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 160
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "priority"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 90
-              },
-              {
-                "id": "custom.cellOptions",
-                "value": {
-                  "type": "color-text"
-                }
-              },
-              {
-                "id": "mappings",
-                "value": [
-                  {
-                    "options": {
-                      "Critical": {
-                        "color": "dark-red",
-                        "index": 0
-                      }
-                    },
-                    "type": "value"
-                  },
-                  {
-                    "options": {
-                      "Error": {
-                        "color": "red",
-                        "index": 1
-                      }
-                    },
-                    "type": "value"
-                  },
-                  {
-                    "options": {
-                      "Warning": {
-                        "color": "orange",
-                        "index": 2
-                      }
-                    },
-                    "type": "value"
-                  },
-                  {
-                    "options": {
-                      "Notice": {
-                        "color": "yellow",
-                        "index": 3
-                      }
-                    },
-                    "type": "value"
-                  }
-                ]
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "rule"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 220
-              }
-            ]
-          },
-          {
-            "matcher": {
-              "id": "byName",
-              "options": "Line"
-            },
-            "properties": [
-              {
-                "id": "custom.width",
-                "value": 600
-              },
-              {
-                "id": "links",
-                "value": [
-                  {
-                    "title": "\ud83e\udd16 Analyze with AI",
-                    "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
-                    "targetBlank": true
-                  }
-                ]
-              }
-            ]
-          }
+          { "matcher": { "id": "byName", "options": "Time" }, "properties": [{ "id": "custom.width", "value": 160 }] },
+          { "matcher": { "id": "byName", "options": "priority" }, "properties": [{ "id": "custom.width", "value": 90 }, { "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "mappings", "value": [ { "options": { "Critical": { "color": "dark-red" } }, "type": "value" }, { "options": { "Error": { "color": "red" } }, "type": "value" }, { "options": { "Warning": { "color": "orange" } }, "type": "value" }, { "options": { "Notice": { "color": "yellow" } }, "type": "value" }] }] },
+          { "matcher": { "id": "byName", "options": "rule" }, "properties": [{ "id": "custom.width", "value": 220 }] },
+          { "matcher": { "id": "byName", "options": "Line" }, "properties": [{ "id": "custom.width", "value": 700 }, { "id": "links", "value": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] }] }
         ]
       },
-      "options": {
-        "showHeader": true,
-        "cellHeight": "sm",
-        "footer": {
-          "show": false
-        }
-      },
+      "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
       "transformations": [
-        {
-          "id": "extractFields",
-          "options": {
-            "source": "labels"
-          }
-        },
-        {
-          "id": "organize",
-          "options": {
-            "excludeByName": {
-              "id": true,
-              "tsNs": true,
-              "labels": true,
-              "source": true
-            },
-            "indexByName": {
-              "Time": 0,
-              "priority": 1,
-              "rule": 2,
-              "hostname": 3,
-              "Line": 4
-            }
-          }
-        }
+        { "id": "extractFields", "options": { "source": "labels" } },
+        { "id": "organize", "options": { "excludeByName": { "id": true, "tsNs": true, "labels": true, "source": true }, "indexByName": { "Time": 0, "priority": 1, "rule": 2, "hostname": 3, "Line": 4 } } }
       ],
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}",
-          "maxLines": 300,
-          "refId": "A"
-        }
-      ]
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}", "maxLines": 300, "refId": "A" }]
     },
     {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 62
-      },
-      "id": 20,
-      "title": "Threat Intelligence Events",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 58 },
+      "id": 30,
+      "title": "🤖 AI-Powered Insights",
       "type": "row"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 24,
-        "x": 0,
-        "y": 63
-      },
-      "id": 21,
-      "options": {
-        "dedupStrategy": "none",
-        "enableLogDetails": true,
-        "showCommonLabels": false,
-        "showLabels": true,
-        "showTime": true,
-        "sortOrder": "Descending",
-        "wrapLogMessage": true
-      },
-      "fieldConfig": {
-        "defaults": {
-          "links": [
-            {
-              "title": "\ud83e\udd16 Analyze with AI",
-              "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}",
-              "targetBlank": true
-            },
-            {
-              "title": "\ud83d\udd0d Lookup IP in Threat Intel",
-              "url": "http://192.168.55.193:5000/threatintel?ip=${__value.raw}",
-              "targetBlank": true
-            }
-          ]
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "{source=\"analysis\", ti_has_threats=\"true\", hostname=~\"$hostname\"}",
-          "refId": "A"
-        }
-      ],
-      "title": "\ud83d\udea8 Events with Threat Intel Hits (enriched stream)",
-      "description": "Falco events whose IPs matched at least one threat intel feed. Filter: ti_has_threats=true in the enriched Loki stream.",
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 13, "w": 24, "x": 0, "y": 59 },
+      "id": 25,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": true, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🔍 View Full AI Analysis Page", "url": "http://192.168.55.193:5000/analyze?output=${__data.fields.original_output}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=\"analysis\", hostname=~\"$hostname\"} | json", "refId": "A" }],
+      "title": "🤖 AI Analysis Results (Enriched Stream)",
+      "description": "Rich LLM output: attack_vector, MITRE mapping, risk assessment, summary, mitigations, false-positive likelihood, threat intel hits, etc. (exactly matches your example JSON).",
       "type": "logs"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 0,
-        "y": 73
-      },
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 72 },
+      "id": 20,
+      "title": "🔍 Threat Intelligence",
+      "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 73 },
+      "id": 21,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }, { "title": "🔍 IP Lookup", "url": "http://192.168.55.193:5000/threatintel?ip=${__value.raw}", "targetBlank": true }] } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=\"analysis\", ti_has_threats=\"true\", hostname=~\"$hostname\"}", "refId": "A" }],
+      "title": "🚨 Events with Threat Intel Hits",
+      "type": "logs"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 5, "w": 8, "x": 0, "y": 83 },
       "id": 22,
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "orientation": "auto",
-        "textMode": "auto",
-        "colorMode": "background",
-        "graphMode": "area"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "orange",
-                "value": 1
-              },
-              {
-                "color": "red",
-                "value": 5
-              }
-            ]
-          },
-          "unit": "short"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "count_over_time({source=\"analysis\", ti_has_threats=\"true\", hostname=~\"$hostname\"} [1h])",
-          "refId": "A",
-          "instant": true
-        }
-      ],
-      "title": "\ud83d\udd25 Threat Intel Hits (last 1h)",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background", "graphMode": "area" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "orange", "value": 1 }, { "color": "red", "value": 5 }] }, "unit": "short" } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "count_over_time({source=\"analysis\", ti_has_threats=\"true\", hostname=~\"$hostname\"} [1h])", "refId": "A", "instant": true }],
+      "title": "🔥 Threat Intel Hits (last 1h)",
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 8,
-        "y": 73
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 5, "w": 8, "x": 8, "y": 83 },
       "id": 23,
-      "options": {
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ]
-        },
-        "colorMode": "background"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 1
-              }
-            ]
-          }
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "loki"
-          },
-          "expr": "count_over_time({source=\"analysis\", ti_has_c2=\"true\", hostname=~\"$hostname\"} [1h])",
-          "refId": "A",
-          "instant": true
-        }
-      ],
-      "title": "\u2620 Confirmed C2 Connections (last 1h)",
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "colorMode": "background" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "red", "value": 1 }] } } },
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "count_over_time({source=\"analysis\", ti_has_c2=\"true\", hostname=~\"$hostname\"} [1h])", "refId": "A", "instant": true }],
+      "title": "☠️ Confirmed C2 Connections (last 1h)",
       "type": "stat"
     },
     {
-      "datasource": {
-        "type": "loki",
-        "uid": "loki"
-      },
-      "gridPos": {
-        "h": 5,
-        "w": 8,
-        "x": 16,
-        "y": 73
-      },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 5, "w": 8, "x": 16, "y": 83 },
       "id": 24,
-      "options": {
-        "content": "### Threat Intel Links\n\n- [\ud83d\udd0d IP Lookup Tool](http://192.168.55.193:5000/threatintel)\n- [\ud83d\udce1 Feed Stats](http://192.168.55.193:5000/api/threatintel/stats)\n- [\ud83d\udd04 Reload Feeds](http://192.168.55.193:5000/api/threatintel/reload)\n\n**Loki query for C2 hits:**\n```\n{source=\"analysis\", ti_has_c2=\"true\"}\n```",
-        "mode": "markdown"
-      },
-      "title": "Threat Intel Quick Links",
+      "options": { "content": "### Threat Intel Quick Links\n\n- [🔍 IP Lookup Tool](http://192.168.55.193:5000/threatintel)\n- [📡 Feed Stats](http://192.168.55.193:5000/api/threatintel/stats)\n- [🔄 Reload Feeds](http://192.168.55.193:5000/api/threatintel/reload)", "mode": "markdown" },
+      "title": "Quick Links",
       "type": "text"
     }
   ],
   "refresh": "30s",
   "schemaVersion": 39,
-  "tags": [
-    "sib",
-    "falco",
-    "security",
-    "ai",
-    "loki"
-  ],
+  "tags": ["sib", "falco", "security", "ai", "loki"],
   "templating": {
     "list": [
       {
         "allValue": ".*",
-        "current": {
-          "selected": true,
-          "text": "All",
-          "value": "$__all"
-        },
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
+        "current": { "selected": true, "text": "All", "value": "$__all" },
+        "datasource": { "type": "loki", "uid": "loki" },
         "definition": "label_values({source=~\"syscall|k8s_audit\"}, hostname)",
         "includeAll": true,
         "multi": false,
@@ -771,19 +208,8 @@
       },
       {
         "allValue": ".*",
-        "current": {
-          "selected": true,
-          "text": [
-            "All"
-          ],
-          "value": [
-            "$__all"
-          ]
-        },
-        "datasource": {
-          "type": "loki",
-          "uid": "loki"
-        },
+        "current": { "selected": true, "text": ["All"], "value": ["$__all"] },
+        "datasource": { "type": "loki", "uid": "loki" },
         "definition": "label_values({source=~\"syscall|k8s_audit\"}, priority)",
         "includeAll": true,
         "multi": true,
@@ -793,13 +219,10 @@
       }
     ]
   },
-  "time": {
-    "from": "now-1h",
-    "to": "now"
-  },
+  "time": { "from": "now-1h", "to": "now" },
   "timepicker": {},
   "timezone": "browser",
-  "title": "Falco Events Explorer (AI + Threat Intel)",
-  "uid": "sib-events-explorer-ai-ti",
-  "version": 5
+  "title": "Falco AI-Powered Security Dashboard (Refined Layout)",
+  "uid": "sib-events-explorer-ai-ti-refined",
+  "version": 7
 }

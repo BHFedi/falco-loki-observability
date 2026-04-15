@@ -19,7 +19,7 @@ loki:
   hostport: "http://loki:3100"
   tenant: ""
   format: "json"
-  minimumpriority: "warning"
+  minimumpriority: "notice"
   extralabels: "source,priority,rule,tags,hostname,container,container_name,proc.name"
 
 # =========================

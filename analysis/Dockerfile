@@ -22,19 +22,17 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY . .
 
-# Make threat intel scripts executable and create the feeds directory so the
-# container starts cleanly even before update-feeds.sh has been run.
-RUN chmod +x /app/threatintel/update-feeds.sh /app/threatintel/lookup-ip.sh \
- && mkdir -p /app/threatintel/feeds
-
+# Create the analyser user FIRST
 RUN useradd -m -r analyser \
- && mkdir -p /app/cache \
+ && mkdir -p /app/cache /app/threatintel/feeds /app/threatintel/rules.d \
  && chown -R analyser:analyser /app
+
+# Make threat intel scripts executable (now as root, before switching user)
+RUN chmod +x /app/threatintel/update-feeds.sh /app/threatintel/lookup-ip.sh
 
 USER analyser
 
 # Threat intel feeds directory — override with THREATINTEL_FEEDS_DIR env var
-# if you prefer to mount feeds from outside the container.
 ENV THREATINTEL_FEEDS_DIR=/app/threatintel/feeds
 
 EXPOSE 5000
