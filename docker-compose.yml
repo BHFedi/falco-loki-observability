@@ -32,19 +32,29 @@ services:
       - GEMINI_MODEL=${GEMINI_MODEL:-gemini-3-flash-preview}
       - GEMINI_API_KEY_FILE=/run/secrets/gemini_api_key
       - THREATFOX_API_KEY_FILE=/run/secrets/threatfox_api_key
-      # the webhook falco rule updater
-      - RULES_API_KEY_FILE=/run/secrets/rules_api_key
-      - RULES_SYNC_API_KEY_FILE=/run/secrets/rules_sync_api_key
-      - RULES_SYNC_WEBHOOK_URL=http://192.168.55.194:5002/webhook
+      # ── Fleet push: register IDS targets ─────────────────────────────────
+      - FALCO_TARGETS=http://rules-sync:5002
+      # Option A — inline env var (comma-separated, no spaces):
+      #   - FALCO_TARGETS=http://192.168.55.194:5002,http://192.168.55.195:5002
+      # Option B — secret file (one URL per line, recommended for 3+ servers):
+      - FALCO_TARGETS_FILE=/run/secrets/falco_targets
+      # Per-target webhook API keys (same order as the targets list):
+      - FALCO_TARGET_KEYS_FILE=/run/secrets/falco_target_keys
+      # Optional human-readable labels for logs & /api/fleet/status:
+      # - FALCO_TARGET_LABELS_FILE=/run/secrets/falco_target_labels
+      # Push timeout in seconds (default 10):
+      - FLEET_DISPATCH_TIMEOUT=10
       # Storage
       - STACK=loki
       - LOKI_URL=http://loki:3100
-      - OBFUSCATION_LEVEL=standard
+      - OBFUSCATION_LEVEL=minimal
       - RULES_DIR=/app/threatintel/rules.d
     secrets:
       - gemini_api_key
       - rules_api_key
       - rules_sync_api_key
+      - falco_targets
+      - falco_target_keys
     depends_on:
       - loki
     healthcheck:
@@ -155,6 +165,10 @@ secrets:
     file: ./secrets/rules_api_key.txt
   rules_sync_api_key:
     file: ./secrets/rules_sync_api_key.txt
+  falco_targets:
+    file: ./secrets/falco_targets.txt   
+  falco_target_keys:
+    file: ./secrets/falco_target_keys.txt
 
 volumes:
   alloy-data:

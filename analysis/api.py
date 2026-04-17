@@ -12,6 +12,9 @@ from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from markupsafe import escape
 
+from fleet_dispatcher import FleetDispatcher, load_targets
+_fleet = FleetDispatcher()
+
 from typing import Optional
 
 # Add parent directory to path for imports
@@ -1249,6 +1252,95 @@ def threatintel_page():
     </body>
     </html>
     """
+
+# ---------------------------------------------------------------------------
+# GET /api/fleet/status
+# ---------------------------------------------------------------------------
+@app.route('/api/fleet/status', methods=['GET'])
+def fleet_status():
+    """
+    List all registered Falco targets and their configuration.
+
+    Response:
+        {
+          "targets": [
+            { "label": "ids-01", "url": "http://192.168.55.194:5002", "auth": true },
+            ...
+          ],
+          "count": 2
+        }
+    """
+    targets = _fleet.status()
+    return jsonify({"targets": targets, "count": len(targets)})
+
+# ---------------------------------------------------------------------------
+# POST /api/fleet/push
+# ---------------------------------------------------------------------------
+@app.route('/api/fleet/push', methods=['POST'])
+def fleet_push():
+    """
+    Read the current rules file from disk and push it to all registered targets.
+
+    Intended to be called automatically by update-feeds.sh (or by hand after
+    a rules change):
+
+        curl -s -X POST http://localhost:5000/api/fleet/push
+
+    Response:
+        {
+          "dispatched": 2,
+          "results": [
+            { "label": "ids-01", "success": true,  "status_code": 200, "skipped": false },
+            { "label": "ids-02", "success": false, "error": "Timeout after 10s" }
+          ]
+        }
+    """
+    rules_dir  = Path(os.environ.get("RULES_DIR", "/app/threatintel/rules.d"))
+    rules_file = rules_dir / "falco_threatintel_rules.yaml"
+
+    if not rules_file.exists():
+        return jsonify({"error": f"Rules file not found: {rules_file}"}), 404
+
+    content = rules_file.read_text(encoding="utf-8")
+    raw     = _fleet.dispatch(content)
+
+    results = [
+        {
+            "label":       r.target.label,
+            "url":         r.target.url,
+            "success":     r.success,
+            "status_code": r.status_code,
+            "skipped":     r.skipped,
+            "error":       r.error,
+        }
+        for r in raw
+    ]
+    return jsonify({"dispatched": len(results), "results": results})
+
+# ---------------------------------------------------------------------------
+# POST /api/fleet/trigger
+# ---------------------------------------------------------------------------
+@app.route('/api/fleet/trigger', methods=['POST'])
+def fleet_trigger():
+    """
+    Send a lightweight webhook trigger to all targets, asking them to
+    pull-sync on their next cycle (no rules payload — lighter than /push).
+
+    Response: same shape as /api/fleet/push
+    """
+    raw = _fleet.trigger_sync()
+
+    results = [
+        {
+            "label":       r.target.label,
+            "url":         r.target.url,
+            "success":     r.success,
+            "status_code": r.status_code,
+            "error":       r.error,
+        }
+        for r in raw
+    ]
+    return jsonify({"triggered": len(results), "results": results})
 
 
 if __name__ == '__main__':

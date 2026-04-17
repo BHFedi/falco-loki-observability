@@ -362,42 +362,7 @@ YAML
     ok "Falco rules written → ${rules_out}"
 }
 
-# =============================================================================
-# Notify remote rules-sync service that new rules are available
-# =============================================================================
 
-notify_rules_sync() {
-    # Read API key from _FILE if present
-    if [[ -n "${RULES_SYNC_API_KEY_FILE}" ]] && [[ -f "${RULES_SYNC_API_KEY_FILE}" ]]; then
-        RULES_SYNC_API_KEY=$(cat "${RULES_SYNC_API_KEY_FILE}" | tr -d '\n')
-    fi
-
-    local webhook_url="${RULES_SYNC_WEBHOOK_URL:-}"
-    local api_key="${RULES_SYNC_API_KEY:-}"
-    if [[ -z "${webhook_url}" ]]; then
-        log "No RULES_SYNC_WEBHOOK_URL set – skipping push notification"
-        return 0
-    fi
-
-    log "Notifying rules-sync service at ${webhook_url}"
-    local http_code
-    if [[ -n "${api_key}" ]]; then
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${webhook_url}" \
-            -H "X-API-Key: ${api_key}" \
-            --max-time 10)
-    else
-        http_code=$(curl -s -o /dev/null -w "%{http_code}" \
-            -X POST "${webhook_url}" \
-            --max-time 10)
-    fi
-
-    if [[ "${http_code}" -eq 200 ]] || [[ "${http_code}" -eq 204 ]]; then
-        ok "Rules-sync notified successfully"
-    else
-        warn "Rules-sync notification failed (HTTP ${http_code})"
-    fi
-}
 
 # =============================================================================
 # Summary
@@ -424,7 +389,7 @@ main() {
     echo -e "${BOLD}🛡️  SIB Threat Intelligence Feed Updater${RESET}"
     echo "   $(date -u '+%Y-%m-%d %H:%M:%S UTC')"
     echo ""
-
+ 
     local failed=0
     fetch_feodotracker     || ((failed++)) || true
     fetch_sslbl            || ((failed++)) || true
@@ -435,14 +400,49 @@ main() {
     fetch_blocklist_de_all || ((failed++)) || true
     fetch_ci_army          || ((failed++)) || true
     fetch_tor_exit_nodes   || ((failed++)) || true
-
+ 
     combine_feeds
     generate_falco_rules
-    notify_rules_sync
+ 
+    # ── Hot-reload in-process threat intel DB ────────────────────────────────
+    if command -v curl &>/dev/null; then
+        log "Hot-reloading threat intel feeds in analyser..."
+        curl -sf -X POST http://localhost:5000/api/threatintel/reload > /dev/null \
+            && ok "Threat intel DB reloaded" \
+            || warn "Hot-reload failed (analyser may be down)"
+    fi
+ 
+    # ── Push updated rules to all registered Falco/IDS targets ───────────────
+    if command -v curl &>/dev/null; then
+        log "Pushing rules to Falco fleet..."
+        PUSH_RESPONSE=$(curl -sf -X POST http://localhost:5000/api/fleet/push 2>/dev/null) || true
+        if [[ -n "${PUSH_RESPONSE}" ]]; then
+            echo "${PUSH_RESPONSE}" | python3 -c "
+import json, sys
+try:
+    data = json.load(sys.stdin)
+    total = data.get('dispatched', 0)
+    ok_count = sum(1 for r in data.get('results', []) if r.get('success') and not r.get('skipped'))
+    skip_count = sum(1 for r in data.get('results', []) if r.get('skipped'))
+    fail_count = sum(1 for r in data.get('results', []) if not r.get('success'))
+    print(f'  Fleet: {ok_count} updated, {skip_count} unchanged, {fail_count} failed / {total} total')
+    for r in data.get('results', []):
+        status = '✓' if r.get('success') else '✗'
+        note   = ' (unchanged)' if r.get('skipped') else ''
+        err    = f\" — {r['error']}\" if r.get('error') else ''
+        print(f\"    {status} {r['label']}{note}{err}\")
+except Exception as e:
+    print(f'  (could not parse push response: {e})', file=sys.stderr)
+" 2>&1 || true
+        else
+            warn "Fleet push returned no response (no targets configured, or analyser offline)"
+        fi
+    fi
+ 
     print_summary
-
+ 
     [[ "${failed}" -gt 0 ]] && { warn "${failed} feed(s) failed or were skipped"; }
     exit 0   # never fail the whole run due to individual feed issues
 }
-
+ 
 main "$@"
