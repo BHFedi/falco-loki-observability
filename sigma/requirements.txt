@@ -1,0 +1,6 @@
+pySigma>=0.11.0
+pySigma-backend-loki>=0.13.0
+pySigma-pipeline-sysmon>=1.0.0
+pyyaml>=6.0
+requests>=2.31.0
+watchdog>=4.0.0

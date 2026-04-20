@@ -1,0 +1,135 @@
+{
+  "version": "1.0",
+  "description": "Mapping between Sigma intent, Falcosidekick labels, and Alloy stream labels used for Loki routing and correlation.",
+  "stream_labels": {
+    "falco": [
+      "source",
+      "priority",
+      "rule",
+      "tags",
+      "hostname",
+      "container",
+      "container_name",
+      "procname"
+    ],
+    "alloy": [
+      "job",
+      "collector",
+      "environment",
+      "host"
+    ],
+    "common": [
+      "source",
+      "hostname",
+      "host",
+      "environment",
+      "collector"
+    ]
+  },
+  "label_aliases": {
+    "Source": {
+      "preferred": "source",
+      "aliases": [
+        "source",
+        "src"
+      ]
+    },
+    "Severity": {
+      "preferred": "priority",
+      "aliases": [
+        "priority",
+        "severity",
+        "level"
+      ]
+    },
+    "Rule": {
+      "preferred": "rule",
+      "aliases": [
+        "rule",
+        "alert",
+        "signature"
+      ]
+    },
+    "Tags": {
+      "preferred": "tags",
+      "aliases": [
+        "tags",
+        "mitre",
+        "attack"
+      ]
+    },
+    "Hostname": {
+      "preferred": "hostname",
+      "aliases": [
+        "hostname",
+        "host",
+        "instance"
+      ]
+    },
+    "Container": {
+      "preferred": "container",
+      "aliases": [
+        "container",
+        "container_name"
+      ]
+    },
+    "ProcessName": {
+      "preferred": "procname",
+      "aliases": [
+        "procname",
+        "proc.name",
+        "process_name"
+      ]
+    },
+    "Job": {
+      "preferred": "job",
+      "aliases": [
+        "job",
+        "service"
+      ]
+    },
+    "Collector": {
+      "preferred": "collector",
+      "aliases": [
+        "collector",
+        "agent",
+        "shipper"
+      ]
+    },
+    "Environment": {
+      "preferred": "environment",
+      "aliases": [
+        "environment",
+        "env"
+      ]
+    }
+  },
+  "falcosidekick_loki_labels": {
+    "enabled": true,
+    "hostport": "http://loki:3100",
+    "format": "json",
+    "minimumpriority": "notice",
+    "extralabels": [
+      "source",
+      "priority",
+      "rule",
+      "tags",
+      "hostname",
+      "container",
+      "container_name",
+      "procname"
+    ]
+  },
+  "alloy_static_labels": {
+    "collector": "alloy",
+    "environment": "production"
+  },
+  "label_generation_policy": {
+    "include_rule_name": true,
+    "include_severity": true,
+    "include_source": true,
+    "include_hostname_when_available": true,
+    "include_container_when_available": true,
+    "do_not_overwrite_existing_labels": true
+  }
+}

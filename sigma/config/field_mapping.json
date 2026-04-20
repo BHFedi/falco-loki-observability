@@ -1,0 +1,271 @@
+{
+  "version": "1.0",
+  "description": "Canonical Sigma-to-Loki/Falco/Alloy field normalization map for log-body and label-based matching.",
+  "canonical_fields": {
+    "CommandLine": {
+      "preferred": [
+        "proc.cmdline",
+        "output_fields.proc.cmdline"
+      ],
+      "fallbacks": [
+        "command",
+        "cmdline"
+      ]
+    },
+    "Image": {
+      "preferred": [
+        "proc.exepath",
+        "output_fields.proc.exepath"
+      ],
+      "fallbacks": [
+        "exe",
+        "process.executable"
+      ]
+    },
+    "ParentImage": {
+      "preferred": [
+        "proc.pname",
+        "output_fields.proc.pname"
+      ],
+      "fallbacks": [
+        "parent",
+        "parent_process"
+      ]
+    },
+    "ProcessName": {
+      "preferred": [
+        "proc.name",
+        "output_fields.proc.name",
+        "procname"
+      ],
+      "fallbacks": [
+        "process",
+        "comm"
+      ]
+    },
+    "User": {
+      "preferred": [
+        "user.name",
+        "output_fields.user.name"
+      ],
+      "fallbacks": [
+        "username",
+        "account"
+      ]
+    },
+    "UserID": {
+      "preferred": [
+        "user.uid",
+        "output_fields.user.uid"
+      ],
+      "fallbacks": [
+        "uid"
+      ]
+    },
+    "TargetFilename": {
+      "preferred": [
+        "fd.name",
+        "output_fields.fd.name"
+      ],
+      "fallbacks": [
+        "file",
+        "path",
+        "target_file"
+      ]
+    },
+    "SourceIp": {
+      "preferred": [
+        "fd.sip",
+        "output_fields.fd.sip"
+      ],
+      "fallbacks": [
+        "src_ip",
+        "source_ip"
+      ]
+    },
+    "DestinationIp": {
+      "preferred": [
+        "fd.dip",
+        "output_fields.fd.dip"
+      ],
+      "fallbacks": [
+        "dst_ip",
+        "destination_ip"
+      ]
+    },
+    "SourcePort": {
+      "preferred": [
+        "fd.sport",
+        "output_fields.fd.sport"
+      ],
+      "fallbacks": [
+        "src_port",
+        "source_port"
+      ]
+    },
+    "DestinationPort": {
+      "preferred": [
+        "fd.dport",
+        "output_fields.fd.dport"
+      ],
+      "fallbacks": [
+        "dst_port",
+        "destination_port"
+      ]
+    },
+    "Protocol": {
+      "preferred": [
+        "fd.l4proto",
+        "output_fields.fd.l4proto"
+      ],
+      "fallbacks": [
+        "proto",
+        "protocol"
+      ]
+    },
+    "EventType": {
+      "preferred": [
+        "evt.type",
+        "output_fields.evt.type"
+      ],
+      "fallbacks": [
+        "event_type",
+        "type"
+      ]
+    },
+    "Rule": {
+      "preferred": [
+        "rule"
+      ],
+      "fallbacks": [
+        "alert",
+        "signature"
+      ]
+    },
+    "Severity": {
+      "preferred": [
+        "priority"
+      ],
+      "fallbacks": [
+        "level",
+        "severity"
+      ]
+    },
+    "Hostname": {
+      "preferred": [
+        "hostname",
+        "host"
+      ],
+      "fallbacks": [
+        "agent.hostname",
+        "node",
+        "instance"
+      ]
+    },
+    "Container": {
+      "preferred": [
+        "container",
+        "container_name"
+      ],
+      "fallbacks": [
+        "pod",
+        "pod_name"
+      ]
+    },
+    "Tags": {
+      "preferred": [
+        "tags"
+      ],
+      "fallbacks": [
+        "attack",
+        "mitre",
+        "labels"
+      ]
+    },
+    "Job": {
+      "preferred": [
+        "job"
+      ],
+      "fallbacks": [
+        "service",
+        "source_job"
+      ]
+    },
+    "Collector": {
+      "preferred": [
+        "collector"
+      ],
+      "fallbacks": [
+        "agent",
+        "shipper"
+      ]
+    },
+    "Environment": {
+      "preferred": [
+        "environment"
+      ],
+      "fallbacks": [
+        "env",
+        "deployment"
+      ]
+    }
+  },
+  "source_profiles": {
+    "falco_loki": {
+      "match_mode": "labels_first_then_log_body",
+      "label_fields": [
+        "hostname",
+        "priority",
+        "rule",
+        "source",
+        "tags",
+        "procname",
+        "container",
+        "container_name"
+      ],
+      "body_fields": [
+        "output_fields.proc.cmdline",
+        "output_fields.proc.exepath",
+        "output_fields.proc.pname",
+        "output_fields.proc.name",
+        "output_fields.user.name",
+        "output_fields.user.uid",
+        "output_fields.fd.name",
+        "output_fields.fd.sip",
+        "output_fields.fd.dip",
+        "output_fields.fd.sport",
+        "output_fields.fd.dport",
+        "output_fields.fd.l4proto",
+        "output_fields.evt.type"
+      ]
+    },
+    "alloy_host_logs": {
+      "match_mode": "labels_first_then_log_body",
+      "label_fields": [
+        "job",
+        "collector",
+        "environment",
+        "host"
+      ],
+      "body_fields": [
+        "message",
+        "msg",
+        "log",
+        "event",
+        "fields"
+      ]
+    }
+  },
+  "normalization_rules": {
+    "case": "lower",
+    "strip_whitespace": true,
+    "remove_sigma_modifiers_for_label_matching": true,
+    "keep_original_field_name_as_alias": true,
+    "support_wildcards": true,
+    "wildcard_policy": {
+      "prefix": "startswith",
+      "suffix": "endswith",
+      "contains": "contains"
+    }
+  }
+}

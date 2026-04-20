@@ -150,11 +150,80 @@ services:
     networks:
       - mon-healio
 
+  # ── Sigma rule watcher / converter / deployer ───────────────────────────────
+  sigma:
+    build:
+      context: ./sigma
+    container_name: sigma
+    restart: unless-stopped
+    volumes:
+      # Drop Sigma rules here — watched in real time
+      - ./sigma/rules:/app/rules:rw
+      # Persistent dedup state (survives restarts)
+      - sigma-state:/app/state
+      # Quarantine for invalid / rejected rules (inspect after failures)
+      - ./sigma/failed:/app/failed:rw
+      # Declarative mapping files
+      - ./sigma/config/field_mapping.json:/app/config/field_mapping.json:ro
+      - ./sigma/config/label_mapping.json:/app/config/label_mapping.json:ro
+    environment:
+      # ── Directories ───────────────────────────────────────────────────
+      - SIGMA_RULES_DIR=/app/rules
+      - SIGMA_STATE_DIR=/app/state
+      - SIGMA_FAILED_DIR=/app/failed
+ 
+      # ── Watcher behaviour ─────────────────────────────────────────────
+      - SIGMA_POLL_INTERVAL=5
+      - SIGMA_DEDUP_STRATEGY=sha256
+      - SIGMA_FAIL_ON_INVALID=true
+ 
+      # ── Output format ─────────────────────────────────────────────────
+      # ruler              → push directly to Loki ruler API
+      # grafana_alerting   → provision via Grafana alerting API
+      # both               → deploy to both targets simultaneously
+      - SIGMA_OUTPUT_FORMAT=ruler
+ 
+      # ── pySigma backend options ───────────────────────────────────────
+      - SIGMA_ADD_LINE_FILTERS=true
+      - SIGMA_CASE_SENSITIVE=false
+      - NORMALIZATION_PROFILE=falco_loki
+ 
+      # ── Mapping config files ──────────────────────────────────────────
+      - SIGMA_FIELD_MAP_FILE=/app/config/field_mapping.json
+      - SIGMA_LABEL_MAP_FILE=/app/config/label_mapping.json
+ 
+      # ── Loki ruler target ─────────────────────────────────────────────
+      - LOKI_URL=http://loki:3100
+      - LOKI_RULER_PATH=/loki/api/v1/rules
+      - LOKI_GROUP_BY_FIELD=hostname
+ 
+      # ── Grafana alerting target ───────────────────────────────────────
+      - GRAFANA_URL=http://grafana:3000
+      - GRAFANA_DATASOURCE_UID=loki
+      - GRAFANA_FOLDER=security
+      - GRAFANA_ORG_ID=1
+      - GRAFANA_INTERVAL=1m
+      - GRAFANA_CONTACT_POINT=default
+      # Grafana API key (optional — omit GRAFANA_API_KEY_FILE if Grafana has no auth)
+      - GRAFANA_API_KEY_FILE=/run/secrets/grafana_sigma_api_key
+    secrets:
+      - grafana_sigma_api_key
+    depends_on:
+      loki:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "/app/src/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      start_period: 20s
+      retries: 3
+    networks:
+      - mon-healio
+
 secrets:
   gemini_api_key:
-    # Option A — Docker Swarm managed secret (recommended for production):
-    # external: true
-    # Option B — local file (ok for dev/compose-only stacks):
     file: ./secrets/gemini_api_key.txt
   grafana_admin_password:
     file: ./secrets/grafana_admin_password.txt
@@ -164,6 +233,8 @@ secrets:
     file: ./secrets/falco_target_keys.txt
   threatfox_api_key:
     file: ./secrets/threatfox_api_key.txt
+  grafana_sigma_api_key:
+    file: ./secrets/grafana_sigma_api_key.txt
 
 volumes:
   alloy-data:
@@ -172,6 +243,7 @@ volumes:
   grafana-data:
   grafana-logs:
   loki-data:
+  sigma-state:
 
 networks:
   mon-healio:

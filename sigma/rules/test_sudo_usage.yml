@@ -1,0 +1,21 @@
+title: Suspicious Sudo Usage
+id: a1b2c3d4-0001-0002-0003-000000000001
+status: test
+description: Detects suspicious sudo command execution
+author: sigma-container-test
+date: 2024/01/01
+logsource:
+  category: process_creation
+  product: linux
+detection:
+  selection:
+    CommandLine|contains:
+      - 'sudo su'
+      - 'sudo -i'
+      - 'sudo bash'
+  condition: selection
+level: high
+tags:
+  - attack.privilege_escalation
+  - attack.TA0004
+  - attack.T1548.003
