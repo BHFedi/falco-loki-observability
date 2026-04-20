@@ -12,7 +12,7 @@ from flask import Flask, request, jsonify, render_template_string
 from flask_cors import CORS
 from markupsafe import escape
 
-from fleet_dispatcher import FleetDispatcher, load_targets
+from fleet_dispatcher import FleetDispatcher
 _fleet = FleetDispatcher()
 
 from typing import Optional
@@ -1301,7 +1301,12 @@ def fleet_push():
     if not rules_file.exists():
         return jsonify({"error": f"Rules file not found: {rules_file}"}), 404
 
-    content = rules_file.read_text(encoding="utf-8")
+    try:
+        content = rules_file.read_text(encoding="utf-8")
+    except Exception as e:
+        logger.error("Failed to read rules file: %s", e)
+        return jsonify({"error": str(e)}), 500
+
     raw     = _fleet.dispatch(content)
 
     results = [

@@ -277,11 +277,11 @@ generate_falco_rules() {
 
 - macro: outbound_connection
   condition: >
-    evt.type in (connect, sendto, sendmsg) and evt.dir = < and
+    evt.type in (connect, sendto, sendmsg) and
     fd.typechar = 4 and fd.connected = true
 
 - macro: inbound_connection
-  condition: evt.type in (accept, accept4) and evt.dir = <
+  condition: evt.type in (accept, accept4)
 
 - macro: c2_ports
   condition: >

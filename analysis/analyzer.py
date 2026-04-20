@@ -346,7 +346,7 @@ class AnthropicProvider(LLMProvider):
 class GeminiProvider(LLMProvider):
     """Google Gemini API provider using the modern GenAI SDK."""
 
-    def __init__(self, api_key: str, model: str = "gemini-2.0-flash"):
+    def __init__(self, api_key: str, model: str = "gemini-3-flash-preview"):
         # Validate API key eagerly so the error is obvious at startup,
         # not silently swallowed during the first analysis call.
         if not api_key:
