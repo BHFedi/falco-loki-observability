@@ -61,6 +61,7 @@ class Config:
     loki_url: str = field(default_factory=lambda: _env("LOKI_URL", "http://loki:3100"))
     loki_ruler_path: str = field(default_factory=lambda: _env("LOKI_RULER_PATH", "/loki/api/v1/rules"))
     loki_group_by_field: str = field(default_factory=lambda: _env("LOKI_GROUP_BY_FIELD", "hostname"))
+    loki_tenant: str = field(default_factory=lambda: _env("LOKI_TENANT_ID", "fake"))
 
     # ── Grafana alerting deployment ──────────────────────────────────────────
     grafana_url: str = field(default_factory=lambda: _env("GRAFANA_URL", "http://grafana:3000"))

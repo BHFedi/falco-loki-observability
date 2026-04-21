@@ -127,6 +127,7 @@ services:
     volumes:
       - ./storage/config/loki.yml:/etc/loki/loki.yml:ro
       - loki-data:/loki
+      - loki-rules:/loki/rules
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3100/ready"]
       interval: 30s
@@ -196,6 +197,7 @@ services:
       - LOKI_URL=http://loki:3100
       - LOKI_RULER_PATH=/loki/api/v1/rules
       - LOKI_GROUP_BY_FIELD=hostname
+        #- LOKI_TENANT_ID=fake
  
       # ── Grafana alerting target ───────────────────────────────────────
       - GRAFANA_URL=http://grafana:3000
@@ -243,6 +245,7 @@ volumes:
   grafana-data:
   grafana-logs:
   loki-data:
+  loki-rules:
   sigma-state:
 
 networks:

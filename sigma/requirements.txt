@@ -1,5 +1,6 @@
-pySigma>=0.11.0
-pySigma-backend-loki>=0.13.0
+pySigma>=1.3.0
+git+https://github.com/grafana/pySigma-backend-loki.git@main#egg=pySigma-backend-loki
+
 pySigma-pipeline-sysmon>=1.0.0
 pyyaml>=6.0
 requests>=2.31.0

@@ -6,14 +6,11 @@ Converts a normalized Sigma rule dict into either:
   - grafana_alerting YAML (SIGMA_OUTPUT_FORMAT=grafana_alerting)
   - both                  (SIGMA_OUTPUT_FORMAT=both)
 
-The pySigma LogQLBackend only accepts two __init__ kwargs:
-  - add_line_filters (bool)
-  - case_sensitive   (bool)
-
-Grafana-specific options (datasource_uid, folder, org_id, interval,
-contact_point, group_by_field) are passed as custom_attributes on the
-backend instance AFTER construction, which is how the sigma CLI's -O
-flags work internally.
+LogQLBackend.__init__ accepts all options directly as kwargs
+(confirmed from the installed package signature):
+  processing_pipeline, collect_errors, add_line_filters, case_sensitive,
+  grafana_datasource_uid, grafana_folder, grafana_org_id, grafana_interval,
+  grafana_contact_point, loki_group_by_field
 """
 
 import inspect
@@ -35,60 +32,41 @@ def _sigma_rule_to_yaml_str(rule: dict) -> str:
 
 def _build_backend(config: Config, output_format: str):
     """
-    Instantiate LogQLBackend with only the kwargs it actually accepts,
-    then inject Grafana options via custom_attributes / direct attributes.
-
-    The real LogQLBackend.__init__ signature (all versions) only accepts:
-      add_line_filters: bool = False
-      case_sensitive:   bool = False
-
-    Everything else (grafana_*, loki_group_by_field) is set post-construction
-    because that is how the sigma CLI passes -O options to the backend.
+    Instantiate LogQLBackend. All options including grafana_* are real __init__
+    kwargs — pass them directly. Guarded by introspection so we only pass what
+    the installed version actually accepts (forward/backward compat).
     """
     from sigma.backends.loki import LogQLBackend
 
-    # ── Determine which kwargs __init__ actually accepts ──────────────────────
+    # Introspect real signature so we never pass an unexpected kwarg
     try:
         valid_params = set(inspect.signature(LogQLBackend.__init__).parameters.keys())
         valid_params.discard("self")
     except Exception:
-        valid_params = {"add_line_filters", "case_sensitive"}
+        valid_params = set()  # empty → pass nothing extra, rely on defaults
 
-    log.debug("LogQLBackend accepts init params: %s", valid_params)
-
-    # ── Build safe kwargs — only pass what __init__ actually accepts ───────────
-    candidate_kwargs: dict[str, Any] = {
+    candidate: dict[str, Any] = {
         "add_line_filters": config.add_line_filters,
         "case_sensitive": config.case_sensitive,
+        "grafana_datasource_uid": config.grafana_datasource_uid,
+        "grafana_folder": config.grafana_folder,
+        "grafana_org_id": config.grafana_org_id,
+        "grafana_interval": config.grafana_interval,
+        "grafana_contact_point": config.grafana_contact_point,
+        "loki_group_by_field": config.loki_group_by_field,
     }
-    init_kwargs = {k: v for k, v in candidate_kwargs.items() if k in valid_params}
 
-    backend = LogQLBackend(**init_kwargs)
-
-    # ── Inject Grafana options post-construction ───────────────────────────────
-    # The backend stores these in self.custom_attributes (a dict) or as direct
-    # instance attributes depending on the version. We try custom_attributes
-    # first (newer versions), then fall back to setattr (older versions).
-    if output_format == "grafana_alerting":
-        grafana_opts: dict[str, Any] = {
-            "grafana_datasource_uid": config.grafana_datasource_uid,
-            "grafana_folder": config.grafana_folder,
-            "grafana_org_id": config.grafana_org_id,
-            "grafana_interval": config.grafana_interval,
-            "grafana_contact_point": config.grafana_contact_point,
+    # Filter to only what this version accepts; always include base two
+    if valid_params:
+        kwargs = {k: v for k, v in candidate.items() if k in valid_params}
+    else:
+        kwargs = {
+            "add_line_filters": config.add_line_filters,
+            "case_sensitive": config.case_sensitive,
         }
-        if config.loki_group_by_field:
-            grafana_opts["loki_group_by_field"] = config.loki_group_by_field
 
-        if hasattr(backend, "custom_attributes") and isinstance(backend.custom_attributes, dict):
-            backend.custom_attributes.update(grafana_opts)
-            log.debug("Injected Grafana opts via custom_attributes: %s", grafana_opts)
-        else:
-            for k, v in grafana_opts.items():
-                setattr(backend, k, v)
-            log.debug("Injected Grafana opts via setattr: %s", grafana_opts)
-
-    return backend
+    log.debug("Building LogQLBackend(format=%s) with kwargs: %s", output_format, list(kwargs))
+    return LogQLBackend(**kwargs)
 
 
 class ConversionResult:
@@ -174,3 +152,29 @@ class RuleConverter:
         if isinstance(queries, list):
             return "\n---\n".join(str(q) for q in queries)
         return str(queries)
+
+
+# ── Patched _convert_format ────────────────────────────────────────────────────
+# Monkey-patch the method on the class so ruler/grafana_alerting preserve
+# the raw pySigma output type (list[str] or str) instead of coercing to string.
+# This lets deployer._extract_alert_rules() see the real structure.
+
+import types as _types
+
+def _convert_format_patched(self, sigma_yaml: str, output_format: str):
+    from sigma.collection import SigmaCollection
+    backend = _build_backend(self._config, output_format)
+    collection = SigmaCollection.from_yaml(sigma_yaml)
+    queries = backend.convert(collection, output_format=output_format)
+    if output_format in ("ruler", "grafana_alerting"):
+        log.debug(
+            "pySigma raw output format=%s type=%s: %.300r",
+            output_format, type(queries).__name__, queries,
+        )
+        return queries  # preserve native type: str | list[str] | list[dict]
+    # default: collapse to plain string
+    if isinstance(queries, list):
+        return "\n".join(str(q) for q in queries)
+    return str(queries)
+
+RuleConverter._convert_format = _convert_format_patched

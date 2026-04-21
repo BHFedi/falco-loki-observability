@@ -1,18 +1,39 @@
 """
 deployer.py — RuleDeployer
 
-Packages converted rules into the correct API payload and pushes them to:
-  - Loki ruler API   (POST /loki/api/v1/rules/{namespace})
-  - Grafana alerting provisioning API  (POST /api/v1/provisioning/alert-rules)
+Loki ruler API (confirmed working):
+  POST /loki/api/v1/rules
+  Content-Type: application/json
+  X-Scope-OrgID: fake
+  Body:
+    {
+      "namespace": "linux_process_creation",
+      "groups": [{
+        "name": "ta0004",
+        "interval": "1m",
+        "rules": [{
+          "alert": "Suspicious_Sudo_Usage",
+          "expr": "sum(count_over_time(...)[1m]) or vector(0) > 0",
+          "for": "0m",
+          "labels": {"severity": "high"},
+          "annotations": {"summary": "..."}
+        }]
+      }]
+    }
 
-Namespace and group assignment is deterministic, derived from logsource,
-severity, and MITRE ATT&CK tags in the rule.
+Key points:
+  - Always POST to /loki/api/v1/rules (no namespace in path)
+  - namespace lives inside the JSON body
+  - X-Scope-OrgID header is required (even with auth_enabled: false)
+  - Content-Type: application/json
+  - No YAML for Loki deployment — pure JSON
+  - Backtick regex in expr replaced with double-quoted strings
+    (backticks are LogQL syntax but break JSON serialization)
 """
 
-import hashlib
+import json
 import logging
 import re
-from typing import Any
 
 import requests
 import yaml
@@ -22,192 +43,208 @@ from converter import ConversionResult
 
 log = logging.getLogger(__name__)
 
-# Timeouts for HTTP calls
 _HTTP_TIMEOUT = 15
 
 
+# ── Slug / namespace / group helpers ──────────────────────────────────────────
+
 def _safe_slug(text: str) -> str:
-    """Convert arbitrary text to a safe lowercase slug."""
-    return re.sub(r"[^a-z0-9_-]", "_", text.lower()).strip("_")[:64]
+    s = re.sub(r"[^a-z0-9_-]", "_", str(text).lower()).strip("_")[:64]
+    return s or "sigma"
 
 
 def _derive_namespace(rule: dict) -> str:
-    """
-    Deterministic namespace from logsource.product + category.
-    Falls back to 'sigma_generic'.
-    """
     logsource = rule.get("logsource", {})
-    product = logsource.get("product", "")
-    category = logsource.get("category", "")
+    product = _safe_slug(logsource.get("product", ""))
+    category = _safe_slug(logsource.get("category", ""))
     parts = [p for p in (product, category) if p]
-    return _safe_slug("_".join(parts)) if parts else "sigma_generic"
+    return "_".join(parts) if parts else "sigma_generic"
 
 
 def _derive_group(rule: dict) -> str:
+    for tag in (rule.get("tags", []) or []):
+        if tag.lower().startswith("attack.ta"):
+            slug = _safe_slug(tag.lower().replace("attack.", ""))
+            if slug:
+                return slug
+    return f"severity_{_safe_slug(rule.get('level', 'medium'))}"
+
+
+# ── expr sanitization ─────────────────────────────────────────────────────────
+
+def _fix_backtick_expr(expr: str) -> str:
     """
-    Deterministic group name: prefer MITRE tactic tag, then severity, then title slug.
+    Replace LogQL backtick-quoted regex literals with double-quoted strings.
+    Backticks are valid LogQL but invalid JSON — Go's JSON parser rejects them.
+      `(?i).*sudo.*`  →  "(?i).*sudo.*"
     """
-    tags: list = rule.get("tags", []) or []
-    for tag in tags:
-        tag_l = tag.lower()
-        if tag_l.startswith("attack.ta"):
-            return _safe_slug(tag_l.replace("attack.", ""))
+    def replacer(m: re.Match) -> str:
+        inner = m.group(1).replace('"', '\\"')
+        return f'"{inner}"'
+    return re.sub(r'`([^`]*)`', replacer, expr)
+
+
+# ── pySigma ruler YAML → alert rule dicts ────────────────────────────────────
+
+def _extract_alert_rules(ruler_raw) -> list[dict]:
+    """
+    Parse pySigma ruler output (str | list) and return flat list of
+    alert rule dicts with backtick exprs converted to double-quoted strings.
+    """
+    if isinstance(ruler_raw, str):
+        yaml_str = ruler_raw
+    elif isinstance(ruler_raw, list):
+        parts = []
+        for item in ruler_raw:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, dict):
+                parts.append(yaml.dump(item, default_flow_style=False))
+            else:
+                parts.append(str(item))
+        yaml_str = "\n---\n".join(parts)
+    else:
+        yaml_str = str(ruler_raw)
+
+    rules: list[dict] = []
+    try:
+        for doc in yaml.safe_load_all(yaml_str):
+            if not doc or not isinstance(doc, dict):
+                continue
+            for grp in doc.get("groups", []):
+                if not isinstance(grp, dict):
+                    continue
+                for r in grp.get("rules", []):
+                    if isinstance(r, dict) and "expr" in r:
+                        r["expr"] = _fix_backtick_expr(r["expr"])
+                        rules.append(r)
+            # bare rule without groups wrapper
+            if "alert" in doc and "expr" in doc and not doc.get("groups"):
+                doc["expr"] = _fix_backtick_expr(doc["expr"])
+                rules.append(doc)
+    except yaml.YAMLError as exc:
+        log.error("YAML parse error extracting rules: %s", exc)
+
+    log.debug("Extracted %d alert rule(s)", len(rules))
+    return rules
+
+
+# ── JSON payload builder ──────────────────────────────────────────────────────
+
+def _build_ruler_payload(namespace: str, group_name: str, rules: list[dict], interval: str = "1m") -> dict:
+    """
+    Build the JSON dict for POST /loki/api/v1/rules.
+    namespace and groups[].name are both required non-empty strings.
+    """
+    assert namespace, "namespace must not be empty"
+    assert group_name, "group_name must not be empty"
+    return {
+        "namespace": namespace,
+        "groups": [{
+            "name": group_name,
+            "interval": interval,
+            "rules": rules,
+        }]
+    }
+
+
+def _fallback_rule(rule: dict) -> dict:
+    title = rule.get("title", "sigma_alert")
     level = rule.get("level", "medium")
-    return f"severity_{_safe_slug(level)}"
+    safe = re.escape(title).replace('"', '\\"')
+    return {
+        "alert": _safe_slug(title),
+        "expr": f'count_over_time({{source="falco"}} |~ "(?i){safe}" [5m]) > 0',
+        "for": "0m",
+        "labels": {"severity": level, "source": "sigma"},
+        "annotations": {
+            "summary": title,
+            "description": rule.get("description", title),
+        },
+    }
 
 
-def _parse_ruler_yaml(ruler_yaml: str) -> list[dict]:
-    """
-    Parse pySigma ruler output (one or more YAML docs) into a list of
-    {'namespace': str, 'group': str, 'rule': dict} records.
-    """
-    docs = list(yaml.safe_load_all(ruler_yaml))
-    parsed = []
-    for doc in docs:
-        if not doc:
-            continue
-        # pySigma ruler format: top-level is a dict with group info
-        # Shape: {groups: [{name: ..., rules: [...]}]}
-        if "groups" in doc:
-            for group in doc["groups"]:
-                for rule_item in group.get("rules", []):
-                    parsed.append({
-                        "group": group.get("name", "sigma"),
-                        "rule": rule_item,
-                    })
-        else:
-            # Flat rule dict
-            parsed.append({"group": "sigma", "rule": doc})
-    return parsed
-
+# ── RuleDeployer ──────────────────────────────────────────────────────────────
 
 class RuleDeployer:
-    """
-    Encapsulates deployment logic for both Loki ruler and Grafana alerting targets.
-    """
-
     def __init__(self, config: Config) -> None:
         self._config = config
         self._session = requests.Session()
-        self._session.headers.update({"Content-Type": "application/json"})
-
-    # ── Public entry point ────────────────────────────────────────────────────
 
     def deploy(self, rule: dict, result: ConversionResult) -> dict[str, bool]:
-        """
-        Deploy a converted rule.
-        Returns {'ruler': bool, 'grafana': bool} indicating success per target.
-        """
         outcomes: dict[str, bool] = {}
-
         namespace = _derive_namespace(rule)
         group = _derive_group(rule)
+        log.info("Deploying '%s' → namespace=%s group=%s", rule.get("title"), namespace, group)
 
         if result.ruler_yaml:
             outcomes["ruler"] = self._deploy_ruler(rule, result.ruler_yaml, namespace, group)
-
         if result.grafana_yaml:
             outcomes["grafana"] = self._deploy_grafana(rule, result.grafana_yaml)
-
         return outcomes
 
-    # ── Loki ruler deployment ─────────────────────────────────────────────────
+    # ── Loki ruler (JSON, fixed endpoint, tenant header) ─────────────────────
 
-    def _deploy_ruler(
-        self,
-        rule: dict,
-        ruler_yaml: str,
-        namespace: str,
-        group: str,
-    ) -> bool:
-        """
-        Package ruler YAML into the Loki ruler API format and POST it.
-
-        Loki ruler API expects:
-          POST /loki/api/v1/rules/{namespace}
-          Content-Type: application/yaml
-          Body: YAML with shape:
-            name: <group>
-            rules:
-              - alert: <name>
-                expr: <logql>
-                ...
-        """
-        url = f"{self._config.loki_ruler_url}/{namespace}"
+    def _deploy_ruler(self, rule: dict, ruler_raw, namespace: str, group: str) -> bool:
         title = rule.get("title", "unknown")
-        level = rule.get("level", "medium")
-        description = rule.get("description", title)
-        tags = rule.get("tags", [])
+        url = self._config.loki_url.rstrip("/") + "/loki/api/v1/rules"
 
-        # Build a canonical ruler payload from pySigma output or raw rule
-        try:
-            parsed = _parse_ruler_yaml(ruler_yaml)
-        except Exception as exc:
-            log.warning("Could not parse ruler YAML for '%s': %s — using raw", title, exc)
-            parsed = []
+        alert_rules = _extract_alert_rules(ruler_raw)
+        if not alert_rules:
+            log.warning("No parseable rules for '%s' — using fallback", title)
+            alert_rules = [_fallback_rule(rule)]
 
-        if parsed:
-            # Use the first parsed rule's expr; combine all rules into one group
-            rules_payload = []
-            for item in parsed:
-                r = item.get("rule", {})
-                rules_payload.append(r)
-        else:
-            # Fallback: best-effort extract from raw YAML
-            rules_payload = [{"alert": _safe_slug(title), "expr": ruler_yaml}]
+        payload = _build_ruler_payload(namespace, group, alert_rules, self._config.grafana_interval)
 
-        payload = yaml.dump(
-            {
-                "name": group,
-                "rules": rules_payload,
-            },
-            default_flow_style=False,
-            allow_unicode=True,
+        log.info(
+            "Ruler POST %s  namespace=%s group=%s rules=%d\n%s",
+            url, namespace, group, len(alert_rules),
+            json.dumps(payload, indent=2),
         )
 
         try:
             resp = self._session.post(
                 url,
-                data=payload,
-                headers={"Content-Type": "application/yaml"},
+                json=payload,                          # Content-Type: application/json
+                headers={"X-Scope-OrgID": self._config.loki_tenant},
                 timeout=_HTTP_TIMEOUT,
             )
-            resp.raise_for_status()
-            log.info(
-                "Deployed ruler rule '%s' → %s/%s [HTTP %s]",
-                title, namespace, group, resp.status_code,
-            )
+            if not resp.ok:
+                log.error(
+                    "Ruler HTTP %s for '%s': %s",
+                    resp.status_code, title, resp.text[:500],
+                )
+                return False
+            log.info("✓ Ruler '%s' → %s/%s [HTTP %s]", title, namespace, group, resp.status_code)
             return True
         except requests.RequestException as exc:
-            log.error("Ruler deployment failed for '%s': %s", title, exc)
+            log.error("Ruler network error for '%s': %s", title, exc)
             return False
 
-    # ── Grafana alerting deployment ───────────────────────────────────────────
+    # ── Grafana alerting ──────────────────────────────────────────────────────
 
     def _deploy_grafana(self, rule: dict, grafana_yaml: str) -> bool:
-        """
-        POST Grafana alerting provisioning YAML to Grafana's provisioning API.
-        """
         title = rule.get("title", "unknown")
         url = self._config.grafana_alert_url
         headers = self._config.grafana_headers()
         headers["Content-Type"] = "application/yaml"
-
         try:
             resp = self._session.post(
-                url,
-                data=grafana_yaml,
-                headers=headers,
-                timeout=_HTTP_TIMEOUT,
+                url, data=grafana_yaml, headers=headers, timeout=_HTTP_TIMEOUT,
             )
-            resp.raise_for_status()
+            if not resp.ok:
+                log.error(
+                    "Grafana HTTP %s for '%s': %s",
+                    resp.status_code, title, resp.text[:500],
+                )
+                return False
             log.info(
-                "Deployed Grafana alert '%s' → folder=%s [HTTP %s]",
+                "✓ Grafana '%s' → folder=%s [HTTP %s]",
                 title, self._config.grafana_folder, resp.status_code,
             )
             return True
         except requests.RequestException as exc:
-            log.error("Grafana deployment failed for '%s': %s", title, exc)
+            log.error("Grafana network error for '%s': %s", title, exc)
             return False
 
     def close(self) -> None:
