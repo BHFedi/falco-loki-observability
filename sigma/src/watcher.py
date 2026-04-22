@@ -55,14 +55,32 @@ class SigmaRuleHandler(FileSystemEventHandler):
 def initial_sweep(pipeline: RulePipeline, rules_dir: Path) -> None:
     """Process any rules already present in the rules directory at startup."""
     log.info("Running initial sweep of %s", rules_dir)
-    count = 0
-    for path in sorted(rules_dir.rglob("*.yml")) + sorted(rules_dir.rglob("*.yaml")):
+
+    # FIX: sorted() on a generator is fine, but combining two sorted() lists
+    # with + is correct Python — keeping it explicit and deduped via a set
+    # to avoid double-processing files matched by both globs (unlikely but safe).
+    seen: set[Path] = set()
+    candidates: list[Path] = []
+    for path in sorted(rules_dir.rglob("*.yml")):
+        if path not in seen:
+            seen.add(path)
+            candidates.append(path)
+    for path in sorted(rules_dir.rglob("*.yaml")):
+        if path not in seen:
+            seen.add(path)
+            candidates.append(path)
+
+    attempted = 0
+    succeeded = 0
+    for path in candidates:
+        attempted += 1
         if pipeline.process_file(path):
-            count += 1
+            succeeded += 1
+
     stats = pipeline.stats()
     log.info(
-        "Initial sweep complete: %d new rules processed | state=%s",
-        count, stats,
+        "Initial sweep complete: %d/%d rules deployed successfully | state=%s",
+        succeeded, attempted, stats,
     )
 
 

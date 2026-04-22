@@ -152,14 +152,23 @@ class RulePipeline:
             self._state.mark_failed(path, f"deployment: {exc}")
             return False
 
-        # ── Record state ─────────────────────────────────────────────────
-        self._state.mark_done(path, rule, outcomes)
-
         any_success = any(outcomes.values())
+
+        # FIX: Only mark done if at least one deployment target succeeded.
+        # Previously, a 401/failed deploy was still recorded as "ok", causing
+        # the rule to never be retried on the next watcher poll.
+        if any_success:
+            self._state.mark_done(path, rule, outcomes)
+        else:
+            reason = "all deployment targets failed: " + str(outcomes)
+            log.warning("Deployment failed for '%s': %s", path.name, reason)
+            self._state.mark_failed(path, reason)
+
         log.info(
-            "Pipeline complete for '%s': outcomes=%s",
+            "Pipeline complete for '%s': outcomes=%s success=%s",
             rule.get("title", path.name),
             outcomes,
+            any_success,
         )
         return any_success
 

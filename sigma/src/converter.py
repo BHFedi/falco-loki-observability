@@ -38,12 +38,11 @@ def _build_backend(config: Config, output_format: str):
     """
     from sigma.backends.loki import LogQLBackend
 
-    # Introspect real signature so we never pass an unexpected kwarg
     try:
         valid_params = set(inspect.signature(LogQLBackend.__init__).parameters.keys())
         valid_params.discard("self")
     except Exception:
-        valid_params = set()  # empty → pass nothing extra, rely on defaults
+        valid_params = set()
 
     candidate: dict[str, Any] = {
         "add_line_filters": config.add_line_filters,
@@ -56,7 +55,6 @@ def _build_backend(config: Config, output_format: str):
         "loki_group_by_field": config.loki_group_by_field,
     }
 
-    # Filter to only what this version accepts; always include base two
     if valid_params:
         kwargs = {k: v for k, v in candidate.items() if k in valid_params}
     else:
@@ -72,8 +70,8 @@ def _build_backend(config: Config, output_format: str):
 class ConversionResult:
     def __init__(
         self,
-        ruler_yaml: str | None = None,
-        grafana_yaml: str | None = None,
+        ruler_yaml=None,       # str | list[str] | list[dict] | None
+        grafana_yaml=None,     # list[dict] | str | None
         logql: str | None = None,
     ):
         self.ruler_yaml = ruler_yaml
@@ -133,7 +131,7 @@ class RuleConverter:
                 result.grafana_yaml = self._convert_format(sigma_yaml, "grafana_alerting")
 
             # Always generate plain LogQL as a diagnostic / audit artifact
-            result.logql = self._convert_format(sigma_yaml, "default")
+            result.logql = self._convert_format(sigma_yaml, "default", coerce_str=True)
 
         except Exception as exc:
             raise ValueError(f"pySigma conversion error: {exc}") from exc
@@ -141,40 +139,35 @@ class RuleConverter:
         log.info("Converted rule '%s' → %r", rule.get("title", "?"), result)
         return result
 
-    def _convert_format(self, sigma_yaml: str, output_format: str) -> str:
-        """Run pySigma for a single output format and return the string output."""
+    def _convert_format(self, sigma_yaml: str, output_format: str, coerce_str: bool = False):
+        """
+        Run pySigma for a single output format.
+
+        For ruler / grafana_alerting: return the native pySigma output type
+        (str | list[str] | list[dict]) so the deployer can work with the real
+        structure without guessing.
+
+        For default (plain LogQL) or when coerce_str=True: collapse to a plain
+        string for logging / audit purposes.
+
+        FIX: previously this was monkey-patched at module level, which was
+        fragile and bypassed the class entirely. The logic now lives cleanly
+        inside the method.
+        """
         from sigma.collection import SigmaCollection
 
         backend = _build_backend(self._config, output_format)
         collection = SigmaCollection.from_yaml(sigma_yaml)
         queries = backend.convert(collection, output_format=output_format)
 
+        if not coerce_str and output_format in ("ruler", "grafana_alerting"):
+            log.debug(
+                "pySigma raw output format=%s type=%s: %.300r",
+                output_format, type(queries).__name__, queries,
+            )
+            return queries  # preserve native type for deployer
+
+        # Collapse to string for logql / audit
         if isinstance(queries, list):
-            return "\n---\n".join(str(q) for q in queries)
+            return "\n".join(str(q) for q in queries)
         return str(queries)
-
-
-# ── Patched _convert_format ────────────────────────────────────────────────────
-# Monkey-patch the method on the class so ruler/grafana_alerting preserve
-# the raw pySigma output type (list[str] or str) instead of coercing to string.
-# This lets deployer._extract_alert_rules() see the real structure.
-
-import types as _types
-
-def _convert_format_patched(self, sigma_yaml: str, output_format: str):
-    from sigma.collection import SigmaCollection
-    backend = _build_backend(self._config, output_format)
-    collection = SigmaCollection.from_yaml(sigma_yaml)
-    queries = backend.convert(collection, output_format=output_format)
-    if output_format in ("ruler", "grafana_alerting"):
-        log.debug(
-            "pySigma raw output format=%s type=%s: %.300r",
-            output_format, type(queries).__name__, queries,
-        )
-        return queries  # preserve native type: str | list[str] | list[dict]
-    # default: collapse to plain string
-    if isinstance(queries, list):
-        return "\n".join(str(q) for q in queries)
-    return str(queries)
-
-RuleConverter._convert_format = _convert_format_patched

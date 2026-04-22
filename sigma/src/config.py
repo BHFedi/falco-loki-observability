@@ -8,7 +8,6 @@ import logging
 import os
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +51,8 @@ class Config:
     fail_on_invalid: bool = field(default_factory=lambda: _env_bool("SIGMA_FAIL_ON_INVALID", True))
 
     # ── Backend / output ─────────────────────────────────────────────────────
-    output_format: str = field(default_factory=lambda: _env("SIGMA_OUTPUT_FORMAT", "ruler"))
+    # FIX: default changed to grafana_alerting to match docker-compose
+    output_format: str = field(default_factory=lambda: _env("SIGMA_OUTPUT_FORMAT", "grafana_alerting"))
     add_line_filters: bool = field(default_factory=lambda: _env_bool("SIGMA_ADD_LINE_FILTERS", True))
     case_sensitive: bool = field(default_factory=lambda: _env_bool("SIGMA_CASE_SENSITIVE", False))
     normalization_profile: str = field(default_factory=lambda: _env("NORMALIZATION_PROFILE", "falco_loki"))
@@ -71,6 +71,10 @@ class Config:
     grafana_interval: str = field(default_factory=lambda: _env("GRAFANA_INTERVAL", "1m"))
     grafana_contact_point: str = field(default_factory=lambda: _env("GRAFANA_CONTACT_POINT", "default"))
     grafana_api_key_file: str = field(default_factory=lambda: _env("GRAFANA_API_KEY_FILE", ""))
+
+    # Basic-auth fallback for testing (used when no API key is present)
+    grafana_user: str = field(default_factory=lambda: _env("GRAFANA_USER", "admin"))
+    grafana_password: str = field(default_factory=lambda: _env("GRAFANA_PASSWORD", "admin"))
 
     # ── Mapping file paths ───────────────────────────────────────────────────
     field_map_file: str = field(default_factory=lambda: _env("SIGMA_FIELD_MAP_FILE", "/app/config/field_mapping.json"))
@@ -91,10 +95,20 @@ class Config:
         if self.grafana_api_key_file:
             key_path = Path(self.grafana_api_key_file)
             if key_path.exists():
-                self.grafana_api_key = key_path.read_text().strip()
-                log.info("Loaded Grafana API key from %s", self.grafana_api_key_file)
+                val = key_path.read_text().strip()
+                if val:
+                    self.grafana_api_key = val
+                    log.info("Loaded Grafana API key from %s", self.grafana_api_key_file)
+                else:
+                    log.warning(
+                        "GRAFANA_API_KEY_FILE (%s) is empty — will fall back to basic auth",
+                        self.grafana_api_key_file,
+                    )
             else:
-                log.warning("GRAFANA_API_KEY_FILE set but file not found: %s", self.grafana_api_key_file)
+                log.warning(
+                    "GRAFANA_API_KEY_FILE set but file not found: %s — will fall back to basic auth",
+                    self.grafana_api_key_file,
+                )
 
     def ensure_dirs(self) -> None:
         for d in (self.rules_dir, self.state_dir, self.failed_dir):
@@ -108,10 +122,27 @@ class Config:
     def grafana_alert_url(self) -> str:
         return self.grafana_url.rstrip("/") + "/api/v1/provisioning/alert-rules"
 
-    def grafana_headers(self) -> dict[str, str]:
-        headers: dict[str, str] = {"Content-Type": "application/json"}
+    @property
+    def grafana_folder_url(self) -> str:
+        return self.grafana_url.rstrip("/") + "/api/folders"
+
+    def grafana_headers(self, content_type: str = "application/json") -> dict[str, str]:
+        """
+        Build Grafana request headers.
+        Priority: Bearer token (service-account key) → Basic auth fallback.
+        content_type lets callers override for YAML payloads.
+        """
+        headers: dict[str, str] = {"Content-Type": content_type}
         if self.grafana_api_key:
             headers["Authorization"] = f"Bearer {self.grafana_api_key}"
+        else:
+            # Basic auth fallback — fine for local/testing deployments
+            import base64
+            creds = base64.b64encode(
+                f"{self.grafana_user}:{self.grafana_password}".encode()
+            ).decode()
+            headers["Authorization"] = f"Basic {creds}"
+            log.debug("Using Basic auth for Grafana (%s)", self.grafana_user)
         return headers
 
     # Convenience: extract the preferred field name for a Sigma field key
@@ -132,7 +163,8 @@ class Config:
         return entry.get("preferred")
 
     def __repr__(self) -> str:  # pragma: no cover
+        auth = "key" if self.grafana_api_key else f"basic:{self.grafana_user}"
         return (
             f"<Config output={self.output_format} loki={self.loki_url} "
-            f"grafana={self.grafana_url} profile={self.normalization_profile}>"
+            f"grafana={self.grafana_url} auth={auth} profile={self.normalization_profile}>"
         )
