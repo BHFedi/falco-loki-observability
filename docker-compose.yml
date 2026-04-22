@@ -123,17 +123,22 @@ services:
     restart: unless-stopped
     ports:
       - "3100:3100"
-    command: -config.file=/etc/loki/loki.yml
+
+    entrypoint: ["/usr/bin/loki"]
+    command: ["-config.file=/etc/loki/loki.yml"]
+
     volumes:
       - ./storage/config/loki.yml:/etc/loki/loki.yml:ro
       - loki-data:/loki
-      - loki-rules:/loki/rules
+      - ./storage/rules:/loki/rules:rw
+
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3100/ready"]
       interval: 30s
       timeout: 10s
       retries: 3
       start_period: 30s
+
     networks:
       - mon-healio
 
@@ -182,7 +187,7 @@ services:
       # ruler              → push directly to Loki ruler API
       # grafana_alerting   → provision via Grafana alerting API
       # both               → deploy to both targets simultaneously
-      - SIGMA_OUTPUT_FORMAT=ruler
+      - SIGMA_OUTPUT_FORMAT=grafana_alerting
  
       # ── pySigma backend options ───────────────────────────────────────
       - SIGMA_ADD_LINE_FILTERS=true

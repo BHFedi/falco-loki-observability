@@ -3,23 +3,20 @@ auth_enabled: false
 server:
   http_listen_port: 3100
   grpc_listen_port: 9096
-  log_level: info # Change to debug
+  log_level: info
 
 common:
   instance_addr: 0.0.0.0
   path_prefix: /loki
-  storage:
-    filesystem:
-      chunks_directory: /loki/chunks
-      rules_directory: /loki/rules
   replication_factor: 1
+
   ring:
     kvstore:
       store: inmemory
 
-memberlist:
-  join_members:
-    - loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
 
 schema_config:
   configs:
@@ -32,22 +29,32 @@ schema_config:
         period: 24h
 
 ruler:
+  enable_api: true
+
   storage:
     type: local
     local:
       directory: /loki/rules
+
   rule_path: /loki/rules
-  alertmanager_url: http://alertmanager:9093 
+
+  # 🔑 CRITICAL: avoid shard/tenant confusion
+  enable_sharding: false
+
   ring:
     kvstore:
       store: inmemory
-  enable_api: true
+
+  alertmanager_url: http://alertmanager:9093
 
 limits_config:
   allow_structured_metadata: true
   retention_period: 168h
   ingestion_rate_mb: 10
   ingestion_burst_size_mb: 20
+
+  # 🔑 prevents tenant-related weirdness
+  max_global_streams_per_user: 0
 
 analytics:
   reporting_enabled: false
