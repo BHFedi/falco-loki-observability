@@ -92,14 +92,18 @@ services:
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       # FIX #5: Use _FILE pattern for Grafana admin password too.
-      - GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_admin_password
-      - GF_USERS_ALLOW_SIGN_UP=false
+      #- GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_admin_password
+      #- GF_USERS_ALLOW_SIGN_UP=false
       - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_LOG_MODE=file
       - GF_PATHS_LOGS=/var/log/grafana
       - GF_LOG_LEVEL=debug
-    secrets:
-      - grafana_admin_password
+      # ── Anonymous auth (testing only) ─────────────────────────────────
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    #secrets:
+      #- grafana_admin_password
     volumes:
       - grafana-data:/var/lib/grafana
       - grafana-logs:/var/log/grafana
@@ -107,7 +111,8 @@ services:
       - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/provisioning/notifiers:/etc/grafana/provisioning/notifiers:ro
       - ./grafana/provisioning/folders:/etc/grafana/provisioning/folders:ro
-      - ./grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
+      #- ./grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
+      - ./grafana/provisioning/security:/etc/grafana/provisioning/security:ro
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -199,10 +204,10 @@ services:
       - SIGMA_LABEL_MAP_FILE=/app/config/label_mapping.json
  
       # ── Loki ruler target ─────────────────────────────────────────────
-      - LOKI_URL=http://loki:3100
-      - LOKI_RULER_PATH=/loki/api/v1/rules
-      - LOKI_GROUP_BY_FIELD=hostname
-        #- LOKI_TENANT_ID=fake
+      #- LOKI_URL=http://loki:3100
+      #- LOKI_RULER_PATH=/loki/api/v1/rules
+      #- LOKI_GROUP_BY_FIELD=hostname
+      #- LOKI_TENANT_ID=fake
  
       # ── Grafana alerting target ───────────────────────────────────────
       - GRAFANA_URL=http://grafana:3000
@@ -212,9 +217,9 @@ services:
       - GRAFANA_INTERVAL=1m
       - GRAFANA_CONTACT_POINT=default
       # Grafana API key (optional — omit GRAFANA_API_KEY_FILE if Grafana has no auth)
-      - GRAFANA_API_KEY_FILE=/run/secrets/grafana_sigma_api_key
-    secrets:
-      - grafana_sigma_api_key
+      #- GRAFANA_API_KEY_FILE=/run/secrets/grafana_sigma_api_key
+   #secrets:
+     #- grafana_sigma_api_key
     depends_on:
       loki:
         condition: service_healthy
@@ -232,16 +237,16 @@ services:
 secrets:
   gemini_api_key:
     file: ./secrets/gemini_api_key.txt
-  grafana_admin_password:
-    file: ./secrets/grafana_admin_password.txt
+ #grafana_admin_password:
+   #file: ./secrets/grafana_admin_password.txt
   falco_targets:
     file: ./secrets/falco_targets.txt   
   falco_target_keys:
     file: ./secrets/falco_target_keys.txt
   threatfox_api_key:
     file: ./secrets/threatfox_api_key.txt
-  grafana_sigma_api_key:
-    file: ./secrets/grafana_sigma_api_key.txt
+ #grafana_sigma_api_key:
+   #file: ./secrets/grafana_sigma_api_key.txt
 
 volumes:
   alloy-data:
