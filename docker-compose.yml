@@ -21,7 +21,7 @@ services:
     container_name: analyser
     restart: unless-stopped
     ports:
-      - "5000:5000"
+      - "127.0.0.1:5000:5000"
     volumes:
       - ./analysis/config.yaml:/app/config.yaml:ro
       - analysis-cache:/app/cache
@@ -68,7 +68,7 @@ services:
     container_name: falcosidekick
     restart: unless-stopped
     ports:
-      - "0.0.0.0:2801:2801"
+      - "127.0.0.1:2801:2801"
     volumes:
       - ./falcosidekick/config/falcosidekick.yaml:/etc/falcosidekick/config.yaml:ro
     command: ["-c", "/etc/falcosidekick/config.yaml"]
@@ -88,7 +88,7 @@ services:
     container_name: grafana
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       # FIX #5: Use _FILE pattern for Grafana admin password too.
@@ -127,7 +127,7 @@ services:
     container_name: loki
     restart: unless-stopped
     ports:
-      - "3100:3100"
+      - "127.0.0.1:3100:3100"
 
     entrypoint: ["/usr/bin/loki"]
     command: ["-config.file=/etc/loki/loki.yml"]
@@ -152,7 +152,7 @@ services:
     container_name: prometheus
     restart: unless-stopped
     ports:
-      - "9090:9090"
+      - "127.0.0.1:9090:9090"
     command:
       - "--config.file=/etc/prometheus/prometheus.yml"
       - "--web.enable-remote-write-receiver"
