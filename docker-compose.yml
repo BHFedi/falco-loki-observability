@@ -91,19 +91,18 @@ services:
       - "127.0.0.1:3000:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
-      # FIX #5: Use _FILE pattern for Grafana admin password too.
-      #- GF_SECURITY_ADMIN_PASSWORD_FILE=/run/secrets/grafana_admin_password
-      #- GF_USERS_ALLOW_SIGN_UP=false
+      - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
+
       - GF_SERVER_ROOT_URL=http://localhost:3000
       - GF_LOG_MODE=file
       - GF_PATHS_LOGS=/var/log/grafana
       - GF_LOG_LEVEL=debug
-      # ── Anonymous auth (testing only) ─────────────────────────────────
-      - GF_AUTH_ANONYMOUS_ENABLED=true
-      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
-      - GF_AUTH_DISABLE_LOGIN_FORM=true
-    #secrets:
-      #- grafana_admin_password
+
+      # ── Anonymous auth  ─────────────────────────────────
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      - GF_AUTH_DISABLE_LOGIN_FORM=false
+    secrets:
+      - grafana_admin_password
     volumes:
       - grafana-data:/var/lib/grafana
       - grafana-logs:/var/log/grafana
@@ -237,16 +236,16 @@ services:
 secrets:
   gemini_api_key:
     file: ./secrets/gemini_api_key.txt
- #grafana_admin_password:
-   #file: ./secrets/grafana_admin_password.txt
+  grafana_admin_password:
+    file: ./secrets/grafana_admin_password.txt
   falco_targets:
     file: ./secrets/falco_targets.txt   
   falco_target_keys:
     file: ./secrets/falco_target_keys.txt
   threatfox_api_key:
     file: ./secrets/threatfox_api_key.txt
- #grafana_sigma_api_key:
-   #file: ./secrets/grafana_sigma_api_key.txt
+ grafana_sigma_api_key:
+   file: ./secrets/grafana_sigma_api_key.txt
 
 volumes:
   alloy-data:

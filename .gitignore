@@ -29,4 +29,6 @@ analysis/.env
 {analysis}/
 
 # --- Secrets ---
-secrets/*.txt
+secrets/
+*.txt
+!secrets/nginx/.gitkeep
