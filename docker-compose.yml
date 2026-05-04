@@ -244,8 +244,8 @@ secrets:
     file: ./secrets/falco_target_keys.txt
   threatfox_api_key:
     file: ./secrets/threatfox_api_key.txt
- grafana_sigma_api_key:
-   file: ./secrets/grafana_sigma_api_key.txt
+  #grafana_sigma_api_key:
+    #file: ./secrets/grafana_sigma_api_key.txt
 
 volumes:
   alloy-data:

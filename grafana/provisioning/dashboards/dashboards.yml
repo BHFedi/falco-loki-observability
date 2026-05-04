@@ -14,7 +14,6 @@ providers:
     allowUiUpdates: true
     options:
       path: /etc/grafana/provisioning/dashboards/loki
-
   # ------------------------
   # Prometheus dashboards (Falco metrics, SIEM monitoring)
   # ------------------------
@@ -28,3 +27,16 @@ providers:
     allowUiUpdates: true
     options:
       path: /etc/grafana/provisioning/dashboards/prometheus
+  # ------------------------
+  # Fail2Ban dashboards (Fail2ban logs, Network monitoring)
+  # ------------------------
+  - name: 'SIEM Dasboards Fail2ban'
+    orgId: 1
+    folder: 'SIEM / Fail2ban'
+    folderUid: 'fail2ban'
+    type: file
+    disableDeletion: false
+    updateIntervalSeconds: 30
+    allowUiUpdates: true
+    options:
+      path: /etc/grafana/provisioning/dashboards/fail2ban

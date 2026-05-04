@@ -1,0 +1,176 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "editable": true,
+  "graphTooltip": 2,
+  "panels": [
+    {
+      "type": "table",
+      "title": "F2B Config",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "f2b_config_jail_max_retries",
+          "format": "table",
+          "instant": true,
+          "refId": "A"
+        },
+        {
+          "expr": "f2b_config_jail_ban_time",
+          "format": "table",
+          "instant": true,
+          "refId": "B"
+        },
+        {
+          "expr": "f2b_config_jail_find_time",
+          "format": "table",
+          "instant": true,
+          "refId": "C"
+        }
+      ],
+      "transformations": [
+        { "id": "merge" },
+        {
+          "id": "groupBy",
+          "options": {
+            "fields": {
+              "Value #A": { "operation": "aggregate", "aggregations": ["lastNotNull"] },
+              "Value #B": { "operation": "aggregate", "aggregations": ["lastNotNull"] },
+              "Value #C": { "operation": "aggregate", "aggregations": ["lastNotNull"] },
+              "jail": { "operation": "groupby" }
+            }
+          }
+        }
+      ],
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 0 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Fail2Ban Failures (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(f2b_jail_failed_total[5m])",
+          "legendFormat": "{{jail}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 6 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Fail2Ban Bans (rate)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "rate(f2b_jail_banned_total[5m])",
+          "legendFormat": "{{jail}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 6 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Active Failures",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "f2b_jail_failed_current",
+          "legendFormat": "{{jail}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 14 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Active Bans",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "f2b_jail_banned_current",
+          "legendFormat": "{{jail}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 14 }
+    },
+
+    {
+      "type": "stat",
+      "title": "Fail2Ban Status",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "f2b_up",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 12, "x": 0, "y": 22 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Exporter Errors",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "f2b_errors",
+          "legendFormat": "{{type}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 22 }
+    },
+
+    {
+      "type": "timeseries",
+      "title": "Top Jails by Failures",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "topk(5, increase(f2b_jail_failed_total[1h]))",
+          "legendFormat": "{{jail}}",
+          "refId": "A"
+        }
+      ],
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 26 }
+    }
+  ],
+
+  "templating": {
+    "list": [
+      {
+        "name": "instance",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(f2b_up, instance)",
+        "multi": true,
+        "includeAll": true
+      }
+    ]
+  },
+
+  "time": { "from": "now-6h", "to": "now" },
+  "refresh": "30s",
+  "schemaVersion": 38,
+  "title": "Fail2Ban Monitoring (Alloy + Prometheus)",
+  "uid": "fail2ban-alloy",
+  "version": 1
+}
