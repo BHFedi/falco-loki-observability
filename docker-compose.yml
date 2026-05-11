@@ -101,6 +101,8 @@ services:
       # ── Anonymous auth  ─────────────────────────────────
       - GF_AUTH_ANONYMOUS_ENABLED=false
       - GF_AUTH_DISABLE_LOGIN_FORM=false
+      # ── plugins  ─────────────────────────────────
+      - GF_PLUGINS_ALLOW_LOADING_UNSIGNED_PLUGINS=healio-analyser-app
     secrets:
       - grafana_admin_password
     volumes:
@@ -112,6 +114,7 @@ services:
       - ./grafana/provisioning/folders:/etc/grafana/provisioning/folders:ro
       #- ./grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
       - ./grafana/provisioning/security:/etc/grafana/provisioning/security:ro
+      - ./grafana/plugins:/var/lib/grafana/plugins
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
@@ -217,8 +220,8 @@ services:
       - GRAFANA_CONTACT_POINT=default
       # Grafana API key (optional — omit GRAFANA_API_KEY_FILE if Grafana has no auth)
       #- GRAFANA_API_KEY_FILE=/run/secrets/grafana_sigma_api_key
-   #secrets:
-     #- grafana_sigma_api_key
+  #secrets:
+    #- grafana_sigma_api_key
     depends_on:
       loki:
         condition: service_healthy

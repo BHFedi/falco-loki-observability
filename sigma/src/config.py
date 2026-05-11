@@ -74,7 +74,7 @@ class Config:
 
     # Basic-auth fallback for testing (used when no API key is present)
     grafana_user: str = field(default_factory=lambda: _env("GRAFANA_USER", "admin"))
-    grafana_password: str = field(default_factory=lambda: _env("GRAFANA_PASSWORD", "admin"))
+    grafana_password: str = field(default_factory=lambda: _env("GRAFANA_PASSWORD", "nPgZOinXx"))
 
     # ── Mapping file paths ───────────────────────────────────────────────────
     field_map_file: str = field(default_factory=lambda: _env("SIGMA_FIELD_MAP_FILE", "/app/config/field_mapping.json"))

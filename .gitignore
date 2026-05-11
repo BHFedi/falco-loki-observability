@@ -32,3 +32,6 @@ analysis/.env
 secrets/
 *.txt
 !secrets/nginx/.gitkeep
+sigma/test_python/test_config.py
+sigma/test_python/test_validator.py
+sigma/test_python/test_watcher.py

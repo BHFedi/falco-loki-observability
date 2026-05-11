@@ -15,6 +15,7 @@
       }
     ]
   },
+  "description": "SOC Overview \u2014 Real-time fail2ban threat posture, geographic attack origin map, and attacker intelligence for shift analysts.",
   "editable": true,
   "fiscalYearStartMonth": 0,
   "graphTooltip": 1,
@@ -28,16 +29,13 @@
     "siem",
     "security",
     "fail2ban",
-    "threat-intel"
+    "soc",
+    "geoip"
   ],
   "templating": {
     "list": [
       {
-        "current": {
-          "selected": false,
-          "text": "Prometheus",
-          "value": "prometheus"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
         "label": "Prometheus",
@@ -51,11 +49,7 @@
         "type": "datasource"
       },
       {
-        "current": {
-          "selected": false,
-          "text": "Loki",
-          "value": "loki"
-        },
+        "current": {},
         "hide": 0,
         "includeAll": false,
         "label": "Loki",
@@ -70,11 +64,7 @@
       },
       {
         "allValue": ".*",
-        "current": {
-          "selected": false,
-          "text": "All",
-          "value": "$__all"
-        },
+        "current": {},
         "datasource": {
           "type": "prometheus",
           "uid": "${prometheus_datasource}"
@@ -82,7 +72,7 @@
         "definition": "label_values(fail2ban_banned_current, jail)",
         "hide": 0,
         "includeAll": true,
-        "label": "Jail",
+        "label": "Jail Filter",
         "multi": true,
         "name": "jail",
         "options": [],
@@ -117,8 +107,8 @@
     ]
   },
   "timezone": "browser",
-  "title": "SIEM - Fail2Ban Security Operations Center",
-  "uid": "siem-fail2ban-soc",
+  "title": "SIEM \u2014 SOC Threat Overview",
+  "uid": "siem-soc-overview",
   "version": 1,
   "weekStart": "",
   "panels": [
@@ -130,20 +120,21 @@
         "x": 0,
         "y": 0
       },
-      "id": 0,
-      "title": "\ud83d\udee1\ufe0f Security Posture",
+      "id": 100,
+      "title": "\ud83d\udee1\ufe0f Security Posture \u2014 Real-Time",
       "type": "row"
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$prometheus_datasource"
+        "uid": "${prometheus_datasource}"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -175,8 +166,8 @@
       "id": 1,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -185,7 +176,6 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
@@ -194,7 +184,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheus_datasource"
+            "uid": "${prometheus_datasource}"
           },
           "expr": "sum(fail2ban_banned_current{jail=~\"$jail\"})",
           "refId": "A",
@@ -202,19 +192,20 @@
           "format": "time_series"
         }
       ],
-      "title": "Active Bans",
+      "title": "\ud83d\udd34 Active Bans",
       "type": "stat"
     },
     {
       "datasource": {
-        "type": "prometheus",
-        "uid": "$prometheus_datasource"
+        "type": "loki",
+        "uid": "${loki_datasource}"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -225,11 +216,11 @@
               },
               {
                 "color": "yellow",
-                "value": 50
+                "value": 5
               },
               {
                 "color": "red",
-                "value": 200
+                "value": 20
               }
             ]
           },
@@ -246,8 +237,8 @@
       "id": 2,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -256,7 +247,148 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource}"
+          },
+          "expr": "sum(count_over_time({job=\"fail2ban\",action=\"Ban\"} [15m]))",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "title": "\u26a1 Bans / 15min",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 10
+              },
+              {
+                "color": "red",
+                "value": 50
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 8,
+        "y": 1
+      },
+      "id": 3,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "10.0.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource}"
+          },
+          "expr": "count(count by (ip) (count_over_time({job=\"fail2ban\",action=\"Ban\"} [24h])))",
+          "refId": "A",
+          "instant": true,
+          "format": "table"
+        }
+      ],
+      "title": "\ud83d\udc65 Unique Attackers (24h)",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prometheus_datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "decimals": 0,
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "yellow",
+                "value": 100
+              },
+              {
+                "color": "red",
+                "value": 500
+              }
+            ]
+          },
+          "unit": "none"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 4,
+        "w": 4,
+        "x": 12,
+        "y": 1
+      },
+      "id": 4,
+      "options": {
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
         "textMode": "auto",
         "wideLayout": true
       },
@@ -265,7 +397,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheus_datasource"
+            "uid": "${prometheus_datasource}"
           },
           "expr": "sum(increase(fail2ban_failed_total{jail=~\"$jail\"}[24h]))",
           "refId": "A",
@@ -273,19 +405,20 @@
           "format": "time_series"
         }
       ],
-      "title": "Failed Attempts (24h)",
+      "title": "\u26a0\ufe0f Failed Attempts (24h)",
       "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$prometheus_datasource"
+        "uid": "${prometheus_datasource}"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -307,14 +440,14 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 8,
+        "x": 16,
         "y": 1
       },
-      "id": 3,
+      "id": 5,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -323,7 +456,6 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
@@ -332,7 +464,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheus_datasource"
+            "uid": "${prometheus_datasource}"
           },
           "expr": "fail2ban_jail_count",
           "refId": "A",
@@ -340,19 +472,20 @@
           "format": "time_series"
         }
       ],
-      "title": "Active Jails",
+      "title": "\ud83d\udd12 Active Jails",
       "type": "stat"
     },
     {
       "datasource": {
         "type": "prometheus",
-        "uid": "$prometheus_datasource"
+        "uid": "${prometheus_datasource}"
       },
       "fieldConfig": {
         "defaults": {
           "color": {
             "mode": "thresholds"
           },
+          "decimals": 0,
           "mappings": [],
           "thresholds": {
             "mode": "absolute",
@@ -374,14 +507,14 @@
       "gridPos": {
         "h": 4,
         "w": 4,
-        "x": 12,
+        "x": 20,
         "y": 1
       },
-      "id": 4,
+      "id": 6,
       "options": {
         "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
+        "graphMode": "none",
+        "justifyMode": "center",
         "orientation": "auto",
         "reduceOptions": {
           "calcs": [
@@ -390,7 +523,6 @@
           "fields": "",
           "values": false
         },
-        "showPercentChange": false,
         "textMode": "auto",
         "wideLayout": true
       },
@@ -399,7 +531,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "$prometheus_datasource"
+            "uid": "${prometheus_datasource}"
           },
           "expr": "fail2ban_up",
           "refId": "A",
@@ -407,13 +539,146 @@
           "format": "time_series"
         }
       ],
-      "title": "Exporter Health",
+      "title": "\ud83d\udc9a Exporter Health",
       "type": "stat"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 5
+      },
+      "id": 101,
+      "title": "\ud83c\udf0d Live Threat Map",
+      "type": "row"
     },
     {
       "datasource": {
         "type": "loki",
-        "uid": "$loki_datasource"
+        "uid": "${loki_datasource}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 14,
+        "w": 17,
+        "x": 0,
+        "y": 6
+      },
+      "id": 7,
+      "options": {
+        "basemap": {
+          "config": {},
+          "name": "Layer 0",
+          "type": "default"
+        },
+        "controls": {
+          "mouseWheelZoom": true,
+          "showAttribution": true,
+          "showDebug": false,
+          "showMeasure": false,
+          "showScale": false,
+          "showZoom": true
+        },
+        "layers": [
+          {
+            "config": {
+              "blur": 18,
+              "radius": 10,
+              "weight": {
+                "fixed": 1,
+                "max": 1,
+                "min": 0
+              }
+            },
+            "location": {
+              "latitude": "geoip_location_latitude",
+              "longitude": "geoip_location_longitude",
+              "mode": "coords"
+            },
+            "name": "Attacker Heatmap",
+            "tooltip": true,
+            "type": "heatmap"
+          }
+        ],
+        "tooltip": {
+          "mode": "details"
+        },
+        "view": {
+          "allLayers": true,
+          "id": "coords",
+          "lat": 25,
+          "lon": 10,
+          "zoom": 2
+        }
+      },
+      "targets": [
+        {
+          "datasource": {
+            "type": "loki",
+            "uid": "${loki_datasource}"
+          },
+          "expr": "{job=\"fail2ban\", action=\"Ban\"}",
+          "refId": "A",
+          "queryType": "range"
+        }
+      ],
+      "title": "\ud83d\udd25 Attacker Origin Heatmap",
+      "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels"
+          }
+        },
+        {
+          "id": "convertFieldType",
+          "options": {
+            "conversions": [
+              {
+                "destinationType": "number",
+                "targetField": "geoip_location_latitude"
+              },
+              {
+                "destinationType": "number",
+                "targetField": "geoip_location_longitude"
+              }
+            ],
+            "fields": {}
+          }
+        }
+      ],
+      "type": "geomap"
+    },
+    {
+      "datasource": {
+        "type": "loki",
+        "uid": "${loki_datasource}"
       },
       "fieldConfig": {
         "defaults": {
@@ -443,114 +708,41 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 16,
-        "y": 1
+        "h": 14,
+        "w": 7,
+        "x": 17,
+        "y": 6
       },
-      "id": 5,
+      "id": 8,
       "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
+        "displayMode": "gradient",
+        "minVizWidth": 0,
+        "orientation": "horizontal",
         "reduceOptions": {
           "calcs": [
-            "lastNotNull"
+            "sum"
           ],
-          "fields": "",
+          "fields": "/^Value$/",
           "values": false
         },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
+        "showUnfilled": true,
+        "sizing": "auto",
+        "valueMode": "color"
       },
-      "pluginVersion": "10.0.0",
       "targets": [
         {
           "datasource": {
             "type": "loki",
-            "uid": "$loki_datasource"
+            "uid": "${loki_datasource}"
           },
-          "expr": "sum(count_over_time({job=\"fail2ban\"} |= \"Ban\" [15m]))",
+          "expr": "sum by (geoip_country_name) (count_over_time({job=\"fail2ban\", action=\"Ban\"} [24h]))",
+          "legendFormat": "{{geoip_country_name}}",
           "refId": "A",
-          "instant": true,
-          "format": "table"
+          "instant": true
         }
       ],
-      "title": "Bans / 15m (Logs)",
-      "type": "stat"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "$loki_datasource"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 10
-              },
-              {
-                "color": "red",
-                "value": 50
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 4,
-        "w": 4,
-        "x": 20,
-        "y": 1
-      },
-      "id": 6,
-      "options": {
-        "colorMode": "background",
-        "graphMode": "area",
-        "justifyMode": "auto",
-        "orientation": "auto",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showPercentChange": false,
-        "textMode": "auto",
-        "wideLayout": true
-      },
-      "pluginVersion": "10.0.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "$loki_datasource"
-          },
-          "expr": "count(count by (ip) (count_over_time({job=\"fail2ban\"} |= \"Ban\" [24h])))",
-          "refId": "A",
-          "instant": true,
-          "format": "table"
-        }
-      ],
-      "title": "Unique Attackers (24h)",
-      "type": "stat"
+      "title": "\ud83c\udf10 Top Attack Countries (24h)",
+      "type": "bargauge"
     },
     {
       "collapsed": false,
@@ -558,9 +750,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 5
+        "y": 20
       },
-      "id": 7,
+      "id": 102,
       "title": "\ud83d\udcc8 Threat Timeline",
       "type": "row"
     },
@@ -626,9 +818,9 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 6
+        "y": 21
       },
-      "id": 8,
+      "id": 9,
       "options": {
         "legend": {
           "calcs": [
@@ -655,7 +847,7 @@
           "refId": "A"
         }
       ],
-      "title": "Bans per Second by Jail",
+      "title": "Ban Rate by Jail (5m avg)",
       "type": "timeseries"
     },
     {
@@ -676,7 +868,7 @@
             "barAlignment": 0,
             "drawStyle": "line",
             "fillOpacity": 10,
-            "gradientMode": "none",
+            "gradientMode": "opacity",
             "hideFrom": {
               "legend": false,
               "tooltip": false,
@@ -692,7 +884,7 @@
             "spanNulls": false,
             "stacking": {
               "group": "A",
-              "mode": "stack"
+              "mode": "none"
             },
             "thresholdsStyle": {
               "mode": "off"
@@ -720,9 +912,9 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 6
+        "y": 21
       },
-      "id": 9,
+      "id": 10,
       "options": {
         "legend": {
           "calcs": [
@@ -749,7 +941,7 @@
           "refId": "A"
         }
       ],
-      "title": "Failed Attempts per Second by Jail",
+      "title": "Failed Attempts Rate by Jail (5m avg)",
       "type": "timeseries"
     },
     {
@@ -758,183 +950,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 14
+        "y": 29
       },
-      "id": 10,
-      "title": "\ud83d\udd12 Jail Breakdown",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "displayMode": "gradient",
-            "minVizWidth": 0,
-            "orientation": "horizontal",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "showUnfilled": true
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 5
-              },
-              {
-                "color": "red",
-                "value": 20
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 15
-      },
-      "id": 11,
-      "options": {
-        "displayMode": "gradient",
-        "minVizWidth": 0,
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "fail2ban_banned_current{jail=~\"$jail\"}",
-          "legendFormat": "{{jail}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Currently Banned per Jail",
-      "type": "bargauge"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "displayMode": "gradient",
-            "minVizWidth": 0,
-            "orientation": "horizontal",
-            "reduceOptions": {
-              "calcs": [
-                "lastNotNull"
-              ],
-              "fields": "",
-              "values": false
-            },
-            "showUnfilled": true
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 10
-              },
-              {
-                "color": "red",
-                "value": 50
-              }
-            ]
-          },
-          "unit": "none"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 15
-      },
-      "id": 12,
-      "options": {
-        "displayMode": "gradient",
-        "minVizWidth": 0,
-        "orientation": "horizontal",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "showUnfilled": true,
-        "sizing": "auto",
-        "valueMode": "color"
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "fail2ban_failed_current{jail=~\"$jail\"}",
-          "legendFormat": "{{jail}}",
-          "refId": "A"
-        }
-      ],
-      "title": "Currently Failed per Jail",
-      "type": "bargauge"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 23
-      },
-      "id": 13,
+      "id": 103,
       "title": "\ud83c\udfaf Attacker Intelligence",
       "type": "row"
     },
@@ -980,19 +998,31 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "ip"
+              "options": "Attacker IP"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 145
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "jail"
+              "options": "Country"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 140
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "City"
             },
             "properties": [
               {
@@ -1004,21 +1034,25 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "action"
+              "options": "Jail"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 100
+                "value": 110
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "Count"
+              "options": "Bans"
             },
             "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              },
               {
                 "id": "custom.cellOptions",
                 "value": {
@@ -1031,12 +1065,12 @@
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
+        "h": 10,
+        "w": 14,
         "x": 0,
-        "y": 24
+        "y": 30
       },
-      "id": 14,
+      "id": 11,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -1051,7 +1085,7 @@
         "sortBy": [
           {
             "desc": true,
-            "displayName": "Count"
+            "displayName": "Bans"
           }
         ]
       },
@@ -1061,24 +1095,42 @@
             "type": "loki",
             "uid": "${loki_datasource}"
           },
-          "expr": "topk(20, sum by (ip) (count_over_time({job=\"fail2ban\"} |= \"Ban\" [24h])))",
+          "expr": "sum by (ip, geoip_country_name, geoip_city_name, jail) (count_over_time({job=\"fail2ban\", action=\"Ban\"} [24h]))",
           "instant": true,
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Top 20 Attacker IPs (24h)",
+      "title": "\ud83d\udd0d Top Attackers with Geo Context (24h)",
       "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels"
+          }
+        },
         {
           "id": "organize",
           "options": {
             "excludeByName": {
               "Time": true,
-              "__name__": true
+              "__name__": true,
+              "action": true,
+              "collector": true,
+              "environment": true,
+              "job": true,
+              "geoip_location_latitude": true,
+              "geoip_location_longitude": true,
+              "geoip_continent_code": true,
+              "geoip_continent_name": true,
+              "geoip_country_code": true
             },
             "renameByName": {
-              "Value": "Count",
-              "ip": "Attacker IP"
+              "Value": "Bans",
+              "ip": "Attacker IP",
+              "geoip_country_name": "Country",
+              "geoip_city_name": "City",
+              "jail": "Jail"
             }
           }
         }
@@ -1110,14 +1162,6 @@
               {
                 "color": "green",
                 "value": null
-              },
-              {
-                "color": "yellow",
-                "value": 3
-              },
-              {
-                "color": "red",
-                "value": 10
               }
             ]
           },
@@ -1127,48 +1171,78 @@
           {
             "matcher": {
               "id": "byName",
-              "options": "ip"
+              "options": "Timestamp"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 150
+                "value": 160
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "jail"
+              "options": "Action"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 120
+                "value": 70
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
               }
             ]
           },
           {
             "matcher": {
               "id": "byName",
-              "options": "action"
+              "options": "Source IP"
             },
             "properties": [
               {
                 "id": "custom.width",
-                "value": 100
+                "value": 135
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Jail"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 110
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Country"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 130
               }
             ]
           }
         ]
       },
       "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 24
+        "h": 10,
+        "w": 10,
+        "x": 14,
+        "y": 30
       },
-      "id": 15,
+      "id": 12,
       "options": {
         "cellHeight": "sm",
         "footer": {
@@ -1183,7 +1257,7 @@
         "sortBy": [
           {
             "desc": true,
-            "displayName": "Time"
+            "displayName": "Timestamp"
           }
         ]
       },
@@ -1193,14 +1267,20 @@
             "type": "loki",
             "uid": "${loki_datasource}"
           },
-          "expr": "{job=\"fail2ban\"} |~ \"(Ban|Unban|Found)\"",
-          "instant": true,
+          "expr": "{job=\"fail2ban\"} |~ \"(Ban|Unban)\"",
+          "instant": false,
           "legendFormat": "",
           "refId": "A"
         }
       ],
-      "title": "Recent Security Events",
+      "title": "\u23f1\ufe0f Recent Ban Events",
       "transformations": [
+        {
+          "id": "extractFields",
+          "options": {
+            "source": "labels"
+          }
+        },
         {
           "id": "organize",
           "options": {
@@ -1209,15 +1289,23 @@
               "tsNs": true,
               "labels": true,
               "labelTypes": true,
-              "Line": true
+              "Line": true,
+              "collector": true,
+              "environment": true,
+              "job": true,
+              "geoip_location_latitude": true,
+              "geoip_location_longitude": true,
+              "geoip_city_name": true,
+              "geoip_continent_code": true,
+              "geoip_continent_name": true,
+              "geoip_country_code": true
             },
             "renameByName": {
               "Time": "Timestamp",
               "ip": "Source IP",
               "jail": "Jail",
               "action": "Action",
-              "level": "Severity",
-              "Line": "Raw Log"
+              "geoip_country_name": "Country"
             }
           }
         }
@@ -1230,133 +1318,9 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 32
+        "y": 40
       },
-      "id": 16,
-      "title": "\ud83c\udf0d Geographic Threat Map",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "loki",
-        "uid": "${loki_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "thresholds"
-          },
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "red",
-                "value": null
-              }
-            ]
-          }
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 10,
-        "w": 16,
-        "x": 0,
-        "y": 33
-      },
-      "id": 17,
-      "options": {
-        "basemap": {
-          "config": {},
-          "name": "Layer 0",
-          "type": "default"
-        },
-        "controls": {
-          "mouseWheelZoom": true,
-          "showAttribution": true,
-          "showDebug": false,
-          "showMeasure": false,
-          "showScale": false,
-          "showZoom": true
-        },
-        "layers": [
-          {
-            "config": {
-              "blur": 15,
-              "radius": 8,
-              "weight": {
-                "fixed": 1,
-                "max": 1,
-                "min": 0
-              }
-            },
-            "location": {
-              "latitude": "geoip_location_latitude",
-              "longitude": "geoip_location_longitude",
-              "mode": "coords"
-            },
-            "name": "Attacker Heatmap",
-            "tooltip": true,
-            "type": "heatmap"
-          }
-        ],
-        "tooltip": {
-          "mode": "details"
-        },
-        "view": {
-          "allLayers": true,
-          "id": "coords",
-          "lat": 30,
-          "lon": 0,
-          "zoom": 2
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "loki",
-            "uid": "${loki_datasource}"
-          },
-          "expr": "{job=\"fail2ban\"} |= \"Ban\"",
-          "refId": "A"
-        }
-      ],
-      "title": "Threat Heatmap (Requires GeoIP Enrichment)",
-      "type": "geomap"
-    },
-    {
-      "gridPos": {
-        "h": 10,
-        "w": 8,
-        "x": 16,
-        "y": 33
-      },
-      "id": 18,
-      "options": {
-        "content": "<div style=\"padding: 10px; font-size: 14px;\">\n<h3>\ud83d\uddfa\ufe0f Enabling GeoIP Mapping</h3>\n<p>This panel requires <b>latitude/longitude</b> fields. To enable it:</p>\n<ol>\n<li>Download MaxMind GeoLite2-City.mmdb to the Alloy host</li>\n<li>Add a <code>stage.geoip</code> block after the regex stage in Alloy:</li>\n</ol>\n<pre style=\"background:#1e1e1e;padding:8px;border-radius:4px;overflow:auto;font-size:12px;\">\nstage.geoip {\n  db     = \"/var/lib/GeoIP/GeoLite2-City.mmdb\"\n  source = \"ip\"\n}\n</pre>\n<p>Or use the <b>free IP-API</b> approach with a custom processor.</p>\n<p><b>Fallback:</b> Use the \"Top 20 Attacker IPs\" table above for immediate intelligence.</p>\n</div>",
-        "mode": "html"
-      },
-      "pluginVersion": "10.0.0",
-      "title": "GeoIP Setup Guide",
-      "type": "text"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 43
-      },
-      "id": 19,
+      "id": 104,
       "title": "\ud83d\udcdc Live Security Feed",
       "type": "row"
     },
@@ -1369,21 +1333,18 @@
         "h": 10,
         "w": 24,
         "x": 0,
-        "y": 44
+        "y": 41
       },
-      "id": 20,
+      "id": 13,
       "options": {
         "showTime": true,
         "sortOrder": "Descending",
-        "wrapLogMessage": true,
+        "wrapLogMessage": false,
         "prettifyLogMessage": false,
         "enableLogDetails": true,
         "dedupStrategy": "none",
-        "showLabels": [
-          "jail",
-          "action",
-          "ip"
-        ]
+        "showLabels": true,
+        "showCommonLabels": false
       },
       "targets": [
         {
@@ -1395,211 +1356,8 @@
           "refId": "A"
         }
       ],
-      "title": "Real-time Fail2Ban Security Log Stream",
+      "title": "\ud83d\udd34 Real-Time Fail2Ban Event Stream",
       "type": "logs"
-    },
-    {
-      "collapsed": false,
-      "gridPos": {
-        "h": 1,
-        "w": 24,
-        "x": 0,
-        "y": 54
-      },
-      "id": 21,
-      "title": "\ud83d\udda5\ufe0f System Context (Prometheus Node Metrics)",
-      "type": "row"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "percentunit"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 0,
-        "y": 55
-      },
-      "id": 22,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "rate(node_cpu_seconds_total{mode!=\"idle\"}[5m])",
-          "legendFormat": "{{mode}}",
-          "refId": "A"
-        }
-      ],
-      "title": "CPU Usage by Mode",
-      "type": "timeseries"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prometheus_datasource}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "axisCenteredZero": false,
-            "axisColorMode": "text",
-            "axisLabel": "",
-            "axisPlacement": "auto",
-            "barAlignment": 0,
-            "drawStyle": "line",
-            "fillOpacity": 10,
-            "gradientMode": "none",
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            },
-            "lineInterpolation": "linear",
-            "lineWidth": 1,
-            "pointSize": 5,
-            "scaleDistribution": {
-              "type": "linear"
-            },
-            "showPoints": "never",
-            "spanNulls": false,
-            "stacking": {
-              "group": "A",
-              "mode": "none"
-            },
-            "thresholdsStyle": {
-              "mode": "off"
-            }
-          },
-          "mappings": [],
-          "thresholds": {
-            "mode": "absolute",
-            "steps": [
-              {
-                "color": "green",
-                "value": null
-              },
-              {
-                "color": "red",
-                "value": 80
-              }
-            ]
-          },
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 8,
-        "w": 12,
-        "x": 12,
-        "y": 55
-      },
-      "id": 23,
-      "options": {
-        "legend": {
-          "calcs": [],
-          "displayMode": "list",
-          "placement": "bottom",
-          "showLegend": true
-        },
-        "tooltip": {
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "node_memory_MemTotal_bytes - node_memory_MemAvailable_bytes",
-          "legendFormat": "Used RAM",
-          "refId": "A"
-        },
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${prometheus_datasource}"
-          },
-          "expr": "node_memory_MemAvailable_bytes",
-          "legendFormat": "Available RAM",
-          "refId": "B"
-        }
-      ],
-      "title": "Memory Usage",
-      "type": "timeseries"
     }
   ]
 }

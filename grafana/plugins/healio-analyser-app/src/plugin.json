@@ -1,0 +1,62 @@
+{
+  "$schema": "https://raw.githubusercontent.com/grafana/grafana/main/docs/sources/developers/plugins/plugin.schema.json",
+  "type": "app",
+  "name": "Analyser",
+  "id": "healio-analyser-app",
+
+  "info": {
+    "keywords": ["siem", "security", "falco", "loki"],
+    "description": "AI-powered SIEM analysis frontend",
+    "author": {
+      "name": "Healio"
+    },
+    "logos": {
+      "small": "img/logo.svg",
+      "large": "img/logo.svg"
+    },
+    "screenshots": [],
+    "version": "%VERSION%",
+    "updated": "%TODAY%"
+  },
+
+  "includes": [
+    {
+      "type": "page",
+      "name": "Overview",
+      "path": "/a/%PLUGIN_ID%/",
+      "addToNav": true,
+      "defaultNav": true
+    },
+    {
+      "type": "page",
+      "name": "Analysis",
+      "path": "/a/%PLUGIN_ID%/analysis",
+      "addToNav": true
+    },
+    {
+      "type": "page",
+      "name": "Threat Intel",
+      "path": "/a/%PLUGIN_ID%/threatintel",
+      "addToNav": true
+    },
+    {
+      "type": "page",
+      "name": "Fleet",
+      "path": "/a/%PLUGIN_ID%/fleet",
+      "addToNav": true
+    },
+    {
+      "type": "page",
+      "icon": "cog",
+      "name": "Configuration",
+      "path": "/plugins/%PLUGIN_ID%",
+      "role": "Admin",
+      "addToNav": true
+    }
+  ],
+
+  "dependencies": {
+    "grafanaDependency": ">=12.3.0",
+    "plugins": []
+  }
+}
