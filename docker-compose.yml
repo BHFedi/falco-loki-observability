@@ -88,7 +88,7 @@ services:
     container_name: grafana
     restart: unless-stopped
     ports:
-      - "127.0.0.1:3000:3000"
+      - "127.0.0.1:3001:3000"
     environment:
       - GF_SECURITY_ADMIN_USER=admin
       - GF_SECURITY_ADMIN_PASSWORD__FILE=/run/secrets/grafana_admin_password
@@ -115,6 +115,7 @@ services:
       #- ./grafana/provisioning/alerting:/etc/grafana/provisioning/alerting:ro
       - ./grafana/provisioning/security:/etc/grafana/provisioning/security:ro
       - ./grafana/plugins:/var/lib/grafana/plugins
+      - ./grafana/plugins/healio-analyser-app/dist:/var/lib/grafana/plugins/healio-analyser-app
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
       interval: 30s
