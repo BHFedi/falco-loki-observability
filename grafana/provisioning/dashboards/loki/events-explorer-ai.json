@@ -84,7 +84,7 @@
       "gridPos": { "h": 11, "w": 24, "x": 0, "y": 24 },
       "id": 7,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": true, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] } },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "/a/healio-analyser-app/analysis?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": false }] } },
       "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"Critical|Error|Warning\"}", "refId": "A" }],
       "title": "🚨 High & Critical Events (AI link) — Always shows severe events",
       "type": "logs"
@@ -100,7 +100,7 @@
       "gridPos": { "h": 12, "w": 24, "x": 0, "y": 36 },
       "id": 3,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] } },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "/a/healio-analyser-app/analysis?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": false }] } },
       "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=~\"syscall|k8s_audit\", hostname=~\"$hostname\", priority=~\"$priority\"}", "refId": "A" }],
       "title": "All Security Events (filtered by priority variable)",
       "type": "logs"
@@ -117,7 +117,7 @@
           { "matcher": { "id": "byName", "options": "Time" }, "properties": [{ "id": "custom.width", "value": 160 }] },
           { "matcher": { "id": "byName", "options": "priority" }, "properties": [{ "id": "custom.width", "value": 90 }, { "id": "custom.cellOptions", "value": { "type": "color-text" } }, { "id": "mappings", "value": [ { "options": { "Critical": { "color": "dark-red" } }, "type": "value" }, { "options": { "Error": { "color": "red" } }, "type": "value" }, { "options": { "Warning": { "color": "orange" } }, "type": "value" }, { "options": { "Notice": { "color": "yellow" } }, "type": "value" }] }] },
           { "matcher": { "id": "byName", "options": "rule" }, "properties": [{ "id": "custom.width", "value": 220 }] },
-          { "matcher": { "id": "byName", "options": "Line" }, "properties": [{ "id": "custom.width", "value": 700 }, { "id": "links", "value": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] }] }
+          { "matcher": { "id": "byName", "options": "Line" }, "properties": [{ "id": "custom.width", "value": 700 }, { "id": "links", "value": [{ "title": "🤖 Analyze with AI", "url": "/a/healio-analyser-app/analysis?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": false }] }] }
         ]
       },
       "options": { "showHeader": true, "cellHeight": "sm", "footer": { "show": false } },
@@ -138,7 +138,7 @@
       "gridPos": { "h": 13, "w": 24, "x": 0, "y": 59 },
       "id": 25,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": true, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "fieldConfig": { "defaults": { "links": [{ "title": "🔍 View Full AI Analysis Page", "url": "http://192.168.55.193:5000/analyze?output=${__data.fields.original_output}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }] } },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🔍 View Full AI Analysis Page", "url": "/a/healio-analyser-app/analysis?output=${__data.fields.original_output}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": false }] } },
       "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=\"analysis\", hostname=~\"$hostname\"} | json", "refId": "A" }],
       "title": "🤖 AI Analysis Results (Enriched Stream)",
       "description": "Rich LLM output: attack_vector, MITRE mapping, risk assessment, summary, mitigations, false-positive likelihood, threat intel hits, etc. (exactly matches your example JSON).",
@@ -155,7 +155,7 @@
       "gridPos": { "h": 10, "w": 24, "x": 0, "y": 73 },
       "id": 21,
       "options": { "dedupStrategy": "none", "enableLogDetails": true, "showCommonLabels": false, "showLabels": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": true },
-      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "http://192.168.55.193:5000/analyze?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": true }, { "title": "🔍 IP Lookup", "url": "http://192.168.55.193:5000/threatintel?ip=${__value.raw}", "targetBlank": true }] } },
+      "fieldConfig": { "defaults": { "links": [{ "title": "🤖 Analyze with AI", "url": "/a/healio-analyser-app/analysis?output=${__value.raw}&rule=${__data.fields.rule}&priority=${__data.fields.priority}&hostname=${__data.fields.hostname}", "targetBlank": false }, { "title": "🔍 IP Lookup", "url": "http://192.168.55.193:5000/threatintel?ip=${__value.raw}", "targetBlank": true }] } },
       "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{source=\"analysis\", ti_has_threats=\"true\", hostname=~\"$hostname\"}", "refId": "A" }],
       "title": "🚨 Events with Threat Intel Hits",
       "type": "logs"
