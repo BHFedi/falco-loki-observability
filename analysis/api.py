@@ -729,6 +729,12 @@ def analyze_api():
             "store": true/false
         }
     
+    Query parameters:
+        - nocache: Set to 'true' to skip cache lookup and always perform fresh analysis
+    
+    Request headers:
+        - X-No-Cache: Set to 'true' to skip cache lookup
+    
     Returns JSON analysis result.
     """
     try:
@@ -736,10 +742,41 @@ def analyze_api():
         if not data or 'alert' not in data:
             return jsonify({'error': 'Missing alert data'}), 400
         
+        # Check for cache bypass flags
+        # (from query parameter OR from X-No-Cache header from Grafana plugin)
+        no_cache = (
+            request.args.get('nocache', 'false').lower() == 'true' or
+            request.headers.get('X-No-Cache', 'false').lower() == 'true'
+        )
+        
+        alert_output = data.get('alert')
+        rule_name = data.get('rule', 'Unknown')
+        
+        # Try cache ONLY if cache is not explicitly bypassed
+        if not no_cache:
+            cache_key = get_cache_key(alert_output, rule_name)
+            cached_result = get_cached_analysis(cache_key)
+            if cached_result:
+                logger.info(f"Cache hit: {cache_key}")
+                response_body = {
+                    'success': True,
+                    'analysis': cached_result.get('analysis', {}),
+                    'obfuscation_mapping': cached_result.get('obfuscation_mapping', {}),
+                    'threat_intel': cached_result.get('threat_intel', {}),
+                    'ai_failed': bool(cached_result.get('analysis', {}).get('error')),
+                    'cached': True,  # Indicate this is a cached response
+                }
+                if cached_result.get('analysis', {}).get('error'):
+                    response_body['ai_error'] = cached_result['analysis']['error']
+                return jsonify(response_body)
+        else:
+            logger.info(f"Cache bypass requested (no_cache={no_cache})")
+        
+        # Perform fresh analysis
         alert = {
-            'output': data.get('alert'),
+            'output': alert_output,
             '_labels': {
-                'rule': data.get('rule', 'Unknown'),
+                'rule': rule_name,
                 'priority': data.get('priority', 'Unknown'),
                 'hostname': data.get('hostname', 'Unknown'),
             },
@@ -750,8 +787,27 @@ def analyze_api():
         result = analyzer.analyze_alert(alert, dry_run=False)
         analysis = result.get('analysis', {})
         
+        # Store in Loki if requested
         if data.get('store', False):
-            analyzer.store_analysis(result)
+            try:
+                analyzer.store_analysis(result)
+            except Exception as e:
+                logger.warning(f"Failed to store analysis in Loki: {e}")
+        
+        # Save to local cache for future lookups (only if cache bypass wasn't requested)
+        # This allows fresh analysis while still caching for later identical requests
+        if not no_cache:
+            try:
+                cache_key = get_cache_key(alert_output, rule_name)
+                obfuscated_alert = result.get('obfuscated_alert', {})
+                obfuscated_output = obfuscated_alert.get('output', '') if isinstance(obfuscated_alert, dict) else str(obfuscated_alert)
+                save_to_cache(
+                    cache_key, result, alert_output, rule_name,
+                    data.get('priority', 'Unknown'),
+                    data.get('hostname', 'Unknown')
+                )
+            except Exception as e:
+                logger.warning(f"Failed to cache analysis: {e}")
         
         response_body = {
             'success': True,
@@ -759,15 +815,17 @@ def analyze_api():
             'obfuscation_mapping': result.get('obfuscation_mapping', {}),
             'threat_intel': result.get('threat_intel', {}),
             'ai_failed': bool(analysis.get('error')),
+            'cached': False,  # Indicate this is a fresh analysis
         }
         if analysis.get('error'):
             response_body['ai_error'] = analysis['error']
-
+ 
         return jsonify(response_body)
         
     except Exception as e:
         logger.exception("Analysis failed")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': str(e), 'success': False}), 500
+
 
 
 @app.route('/analyze', methods=['GET'])
@@ -1347,6 +1405,20 @@ def fleet_trigger():
     ]
     return jsonify({"triggered": len(results), "results": results})
 
+# This debug endpoint to help diagnose the issue
+@app.route('/api/debug', methods=['GET'])
+def debug_info():
+    """Return debug information about the analyzer service."""
+    return jsonify({
+        'service': 'healio-analyser',
+        'version': '1.0.0',
+        'status': 'operational',
+        'cache_dir': str(CACHE_DIR),
+        'cache_ttl_seconds': CACHE_TTL,
+        'cache_files_count': len(list(CACHE_DIR.glob('*.json'))),
+        'llm_provider': os.environ.get('LLM_PROVIDER', 'unknown'),
+        'timestamp': datetime.now().isoformat(),
+    }), 200
 
 if __name__ == '__main__':
     import argparse
